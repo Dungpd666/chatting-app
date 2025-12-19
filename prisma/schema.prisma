@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                    Int                    @id @default(autoincrement())
+  username              String
+  email                 String                 @unique
+  password              String
+  avatar                String
+  created_at            DateTime               @default(now())
+  messages              Message[]
+  conversation_members  ConversationMember[]
+
+  @@map("users")
+}
+
+model Conversation {
+  id                    Int                    @id @default(autoincrement())
+  type                  String
+  name                  String
+  last_message_at       DateTime?
+  created_at            DateTime               @default(now())
+  messages              Message[]
+  conversation_members  ConversationMember[]
+
+  @@map("conversations")
+}
+
+model ConversationMember {
+  conversation_id  Int
+  user_id          Int
+  joined_at        DateTime  @default(now())
+  last_seen_at     DateTime?
+  is_admin         Boolean   @default(false)
+
+  conversation     Conversation @relation(fields: [conversation_id], references: [id])
+  user             User         @relation(fields: [user_id], references: [id])
+
+  @@id([conversation_id, user_id])
+  @@map("conversation_members")
+}
+
+model Message {
+  id              Int          @id @default(autoincrement())
+  conversation_id Int
+  user_id         Int
+  content         String       @db.Text
+  message_type    String
+  created_at      DateTime     @default(now())
+
+  conversation    Conversation @relation(fields: [conversation_id], references: [id])
+  user            User         @relation(fields: [user_id], references: [id])
+
+  @@map("messages")
+}
