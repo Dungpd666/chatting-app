@@ -69,7 +69,7 @@ export class MessagesService {
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.user', 'user')
       .where('msg.conversation_id = :conversationId', { conversationId })
-      .orderBy('msg.created_at', 'DESC')
+      .orderBy('msg.created_at', 'ASC')
       .limit(limit);
 
     if (cursor) {
