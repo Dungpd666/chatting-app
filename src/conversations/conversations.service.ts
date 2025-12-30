@@ -18,7 +18,21 @@ export class ConversationsService {
   ) {}
 
   async create(userId: number, createConversationDto: CreateConversationDto) {
-    const { type, name, participant_id, participant_ids } = createConversationDto;
+    let { type, name, participant_id, participant_ids, user_ids } = createConversationDto;
+
+    if (user_ids && user_ids.length > 0) {
+      if (user_ids.length === 1) {
+        type = 'direct';
+        participant_id = user_ids[0];
+      } else {
+        type = 'group';
+        participant_ids = user_ids;
+      }
+    }
+
+    if (type === 'private') {
+      type = 'direct';
+    }
 
     if (type === 'direct' && !participant_id) {
       throw new BadRequestException('participant_id is required for direct chat');
@@ -110,7 +124,6 @@ export class ConversationsService {
       .addOrderBy('conv.created_at', 'DESC')
       .getMany();
 
-    // Get members and unread count for each conversation
     const result = await Promise.all(
       conversations.map(async (conv) => {
         const members = await this.conversationMemberRepository
@@ -119,7 +132,6 @@ export class ConversationsService {
           .where('cm.conversation_id = :convId', { convId: conv.id })
           .getMany();
 
-        // Get unread count
         const member = await this.conversationMemberRepository.findOne({
           where: { conversation_id: conv.id, user_id: userId },
         });
@@ -128,7 +140,6 @@ export class ConversationsService {
         if (member && conv.last_message_at) {
           const lastSeenAt = member.last_seen_at || member.joined_at;
           if (conv.last_message_at > lastSeenAt) {
-            // Count messages after last_seen_at
             unreadCount = await this.conversationRepository.query(
               `SELECT COUNT(*) as count FROM messages
                WHERE conversation_id = $1 AND created_at > $2`,
@@ -136,6 +147,17 @@ export class ConversationsService {
             ).then(result => parseInt(result[0].count));
           }
         }
+
+        const lastMessage = await this.conversationRepository.query(
+          `SELECT m.id, m.content, m.message_type, m.created_at, m.user_id as sender_id,
+                  u.username as sender_username
+           FROM messages m
+           LEFT JOIN users u ON u.id = m.user_id
+           WHERE m.conversation_id = $1
+           ORDER BY m.created_at DESC
+           LIMIT 1`,
+          [conv.id]
+        ).then(result => result[0] || null);
 
         return {
           ...conv,
@@ -147,6 +169,7 @@ export class ConversationsService {
             is_admin: m.is_admin,
           })),
           unread_count: unreadCount,
+          last_message: lastMessage,
         };
       })
     );
