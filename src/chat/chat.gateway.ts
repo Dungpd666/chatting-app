@@ -29,7 +29,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
 
     async handleConnection(client: Socket) {
         try {
-            // Verify JWT token
             const token = client.handshake?.auth?.token ||
                          client.handshake?.headers?.authorization?.split(' ')[1];
 
@@ -39,7 +38,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
                 return;
             }
 
-            // Verify and decode token
             const payload = this.jwtService.verify(token);
             client.data.user = payload;
 
@@ -121,10 +119,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
                 .to(`conversation_${conversationId}`)
                 .emit('new_message', {
                     id: message.id,
-                    conversationId: message.conversation_id,
-                    senderId: message.user_id,
+                    conversation_id: message.conversation_id,
+                    sender_id: message.user_id,
                     content: message.content,
-                    createdAt: message.created_at,
+                    message_type: message.message_type,
+                    created_at: message.created_at,
+                    sender: {
+                        id: message.user.id,
+                        username: message.user.username,
+                        email: message.user.email,
+                        avatar: message.user.avatar,
+                    },
                 });
 
             console.log(`Message sent to conversation ${conversationId}`);

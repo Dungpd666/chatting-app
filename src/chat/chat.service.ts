@@ -36,9 +36,16 @@ export class ChatService {
             conversation_id: parseInt(data.conversationId),
             user_id: parseInt(data.senderId),
             content: data.content,
+            message_type: 'text',
+            created_at: new Date(),
         });
 
-        return await this.messageRepository.save(message);
+        const savedMessage = await this.messageRepository.save(message);
+
+        return await this.messageRepository.findOne({
+            where: { id: savedMessage.id },
+            relations: ['user'],
+        });
     }
 
     async markAsRead(userId: string, conversationId: string) {
