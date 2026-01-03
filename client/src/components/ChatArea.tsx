@@ -7,14 +7,20 @@ import MessageInput from './MessageInput';
 
 interface ChatAreaProps {
   conversation: Conversation;
+  onMessageSent?: (conversationId: number) => void;
 }
 
-const ChatArea: React.FC<ChatAreaProps> = ({ conversation }) => {
+const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState<number[]>([]);
   const [showInfo, setShowInfo] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
 
   // Get members list for display
@@ -78,8 +84,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation }) => {
 
       // Mark as read
       socketService.markAsRead(conversation.id);
+
+      // Notify parent to update conversation order
+      onMessageSent?.(conversation.id);
     }
-  }, [conversation.id]);
+  }, [conversation.id, onMessageSent]);
 
   const handleUserTyping = useCallback((data: { userId: number; conversationId: number; isTyping: boolean }) => {
     if (data.conversationId === conversation.id && data.userId !== user?.id) {
@@ -144,37 +153,118 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation }) => {
     return currentDate !== previousDate;
   };
 
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+
+    if (!query || query.trim() === '') {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearchLoading(true);
+    try {
+      const results = await messagesAPI.searchMessages(conversation.id, query);
+      console.log('Search results:', results);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleSearchToggle = () => {
+    setShowSearch(!showSearch);
+    if (!showSearch) {
+      setSearchQuery('');
+      setSearchResults([]);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+  };
+
+  const scrollToMessage = (messageId: number) => {
+    const messageElement = document.getElementById(`message-${messageId}`);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      messageElement.classList.add('bg-yellow-100');
+      setTimeout(() => messageElement.classList.remove('bg-yellow-100'), 2000);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-row bg-gray-50 h-screen">
       <div className="flex-1 flex flex-col">
       {/* Chat Header */}
-      <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-            {conversation.name?.charAt(0).toUpperCase() || 'C'}
+      <div className="bg-white border-b border-gray-200">
+        <div className="p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+              {conversation.name?.charAt(0).toUpperCase() || 'C'}
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-800">{conversation.name || 'Conversation'}</h2>
+              <p className="text-xs text-gray-500">
+                {typingUsers.length > 0 ? 'Typing...' : 'Online'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-semibold text-gray-800">{conversation.name || 'Conversation'}</h2>
-            <p className="text-xs text-gray-500">
-              {typingUsers.length > 0 ? 'Typing...' : 'Online'}
-            </p>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleSearchToggle}
+              className={`p-2 transition ${showSearch ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowInfo(!showInfo)}
+              className="p-2 text-gray-500 hover:text-gray-700 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </button>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <button className="p-2 text-gray-500 hover:text-gray-700 transition">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setShowInfo(!showInfo)}
-            className="p-2 text-gray-500 hover:text-gray-700 transition"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
-        </div>
+
+        {/* Search Bar */}
+        {showSearch && (
+          <div className="px-4 pb-3">
+            <div className="relative">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search messages..."
+                className="w-full px-4 py-2 pl-10 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {searchQuery && (
+                <button
+                  onClick={() => handleSearch('')}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {searchLoading && (
+              <p className="text-sm text-gray-500 mt-2">Searching...</p>
+            )}
+            {searchQuery && !searchLoading && (
+              <p className="text-sm text-gray-500 mt-2">
+                {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -183,6 +273,51 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation }) => {
           <div className="flex items-center justify-center h-full">
             <div className="text-gray-400">Loading messages...</div>
           </div>
+        ) : showSearch && searchQuery ? (
+          searchResults.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-gray-400 text-center">
+                No messages found for "{searchQuery}"
+              </div>
+            </div>
+          ) : (
+            <>
+              {searchResults.map((message) => {
+                const sender = message.sender || message.user;
+
+                return (
+                  <div
+                    key={message.id}
+                    onClick={() => {
+                      setShowSearch(false);
+                      setSearchQuery('');
+                      setTimeout(() => scrollToMessage(message.id), 100);
+                    }}
+                    className="cursor-pointer hover:bg-gray-100 p-3 rounded-lg transition"
+                  >
+                    <div className="flex items-start space-x-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                        {sender?.username?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline space-x-2">
+                          <p className="font-medium text-gray-900 text-sm">
+                            {sender?.username || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatTime(message.created_at)}
+                          </p>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-1 break-words">
+                          {message.content}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-gray-400 text-center">
@@ -210,7 +345,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation }) => {
                     </div>
                   )}
 
-                  <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+                  <div id={`message-${message.id}`} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} transition-colors duration-500`}>
                     <div className={`flex items-end space-x-2 max-w-lg ${isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''}`}>
                       {!isOwnMessage && (
                         <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
@@ -257,7 +392,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation }) => {
       </div>
 
       {/* Message Input */}
-      <MessageInput conversationId={conversation.id} />
+      <MessageInput conversationId={conversation.id} onMessageSent={onMessageSent} />
       </div>
 
       {/* Info Panel */}

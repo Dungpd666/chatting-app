@@ -1,19 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import ChatArea from '../components/ChatArea';
 import { Conversation } from '../types';
 
 const Chat: React.FC = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const sidebarRef = useRef<any>(null);
+
+  const handleMessageSent = (conversationId: number) => {
+    // Reload conversations to update order
+    if (sidebarRef.current?.loadConversations) {
+      sidebarRef.current.loadConversations();
+    }
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
+        ref={sidebarRef}
         selectedConversation={selectedConversation}
         onSelectConversation={setSelectedConversation}
       />
       {selectedConversation ? (
-        <ChatArea conversation={selectedConversation} />
+        <ChatArea
+          conversation={selectedConversation}
+          onMessageSent={handleMessageSent}
+        />
       ) : (
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <div className="text-center">
