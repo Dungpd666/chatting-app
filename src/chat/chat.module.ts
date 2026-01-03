@@ -6,10 +6,11 @@ import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { Message } from '../messages/entities/message.entity';
 import { ConversationMember } from '../conversation_members/entities/conversation_member.entity';
+import { Conversation } from '../conversations/entities/conversation.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Message, ConversationMember]),
+        TypeOrmModule.forFeature([Message, ConversationMember, Conversation]),
         JwtModule.registerAsync({
             imports: [ConfigModule],
             inject: [ConfigService],

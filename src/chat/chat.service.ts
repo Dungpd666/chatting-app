@@ -3,6 +3,7 @@ import {InjectRepository} from "@nestjs/typeorm";
 import {Repository} from "typeorm";
 import {Message} from "../messages/entities/message.entity";
 import {ConversationMember} from "../conversation_members/entities/conversation_member.entity";
+import {Conversation} from "../conversations/entities/conversation.entity";
 
 @Injectable()
 export class ChatService {
@@ -11,6 +12,8 @@ export class ChatService {
         private messageRepository: Repository<Message>,
         @InjectRepository(ConversationMember)
         private memberRepository: Repository<ConversationMember>,
+        @InjectRepository(Conversation)
+        private conversationRepository: Repository<Conversation>,
     ) {}
 
     async checkUserInConversation(
@@ -41,6 +44,13 @@ export class ChatService {
         });
 
         const savedMessage = await this.messageRepository.save(message);
+
+        await this.conversationRepository.update(
+            parseInt(data.conversationId),
+            {
+                last_message_at: savedMessage.created_at,
+            }
+        );
 
         return await this.messageRepository.findOne({
             where: { id: savedMessage.id },

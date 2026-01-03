@@ -4,9 +4,10 @@ import { socketService } from '../services/socket';
 interface MessageInputProps {
   conversationId: number;
   onTyping?: (isTyping: boolean) => void;
+  onMessageSent?: (conversationId: number) => void;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping, onMessageSent }) => {
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -49,6 +50,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping })
       setIsTyping(false);
       socketService.sendTyping(conversationId, false);
       onTyping?.(false);
+      onMessageSent?.(conversationId);
 
       // Clear typing timeout
       if (typingTimeoutRef.current) {

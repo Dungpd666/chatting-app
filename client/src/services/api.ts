@@ -109,6 +109,21 @@ export const messagesAPI = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/messages/${id}`);
   },
+
+  searchMessages: async (
+    conversationId: number,
+    query: string,
+    limit: number = 50
+  ): Promise<Message[]> => {
+    const params = new URLSearchParams({
+      q: query,
+      limit: limit.toString(),
+    });
+    const response = await api.get<Message[]>(
+      `/messages/conversation/${conversationId}/search?${params}`
+    );
+    return response.data;
+  },
 };
 
 // Users API
@@ -120,6 +135,16 @@ export const usersAPI = {
 
   getOne: async (id: number): Promise<User> => {
     const response = await api.get<User>(`/users/${id}`);
+    return response.data;
+  },
+
+  updateProfile: async (data: {
+    username?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }): Promise<User> => {
+    const response = await api.put<User>('/users/profile', data);
     return response.data;
   },
 };

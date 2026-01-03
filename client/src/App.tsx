@@ -5,6 +5,7 @@ import PrivateRoute from './components/PrivateRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
+import Profile from './pages/Profile';
 
 function App() {
   return (
@@ -14,14 +15,23 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route
-            path="/"
+            path="/chat"
             element={
               <PrivateRoute>
                 <Chat />
               </PrivateRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/" />} />
+          <Route
+            path="/profile"
+            element={
+              <PrivateRoute>
+                <Profile />
+              </PrivateRoute>
+            }
+          />
+          <Route path="/" element={<Navigate to="/chat" />} />
+          <Route path="*" element={<Navigate to="/chat" />} />
         </Routes>
       </Router>
     </AuthProvider>
