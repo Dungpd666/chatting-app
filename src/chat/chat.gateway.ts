@@ -87,7 +87,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
                 return;
             }
 
-            client.join(`conversation_${conversationId}`);
+            const roomName = `conversation_${conversationId}`;
+            client.join(roomName);
             console.log(`User ${userId} joined conversation ${conversationId}`);
             client.emit('joined_conversation', {conversationId});
         } catch (error) {
@@ -115,24 +116,31 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
                 content: content.trim(),
             });
 
+            const messageData = {
+                id: message.id,
+                conversation_id: message.conversation_id,
+                sender_id: message.user_id,
+                content: message.content,
+                message_type: message.message_type,
+                created_at: message.created_at,
+                sender: {
+                    id: message.user.id,
+                    username: message.user.username,
+                    email: message.user.email,
+                    avatar: message.user.avatar,
+                },
+            };
+
             this.server
                 .to(`conversation_${conversationId}`)
-                .emit('new_message', {
-                    id: message.id,
-                    conversation_id: message.conversation_id,
-                    sender_id: message.user_id,
-                    content: message.content,
-                    message_type: message.message_type,
-                    created_at: message.created_at,
-                    sender: {
-                        id: message.user.id,
-                        username: message.user.username,
-                        email: message.user.email,
-                        avatar: message.user.avatar,
-                    },
-                });
+                .emit('new_message', messageData);
 
-            console.log(`Message sent to conversation ${conversationId}`);
+            const memberIds = await this.chatService.getConversationMembers(conversationId);
+            memberIds.forEach(memberId => {
+                this.server
+                    .to(`user_${memberId}`)
+                    .emit('new_message', messageData);
+            });
 
         } catch (error) {
             client.emit('error', { message: error.message });

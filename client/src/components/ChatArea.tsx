@@ -21,7 +21,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
   const [searchLoading, setSearchLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const conversationIdRef = useRef<number>(conversation.id);
   const { user } = useAuth();
+
+  // Update ref when conversation changes
+  useEffect(() => {
+    conversationIdRef.current = conversation.id;
+  }, [conversation.id]);
 
   // Get members list for display
   const membersList = React.useMemo(() => {
@@ -67,28 +73,37 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
       // Backend returns { messages: [], has_more: boolean, next_cursor: number }
       const messagesList = Array.isArray(data) ? data : (data.messages || []);
       setMessages(messagesList);
+
+      // Mark as read when loading messages
+      socketService.markAsRead(conversation.id);
     } catch (error) {
       console.error('Failed to load messages:', error);
     } finally {
       setLoading(false);
     }
-  }, [conversation.id]);
+  }, [conversation.id, onMessageSent]);
 
   const joinConversation = useCallback(() => {
     socketService.joinConversation(conversation.id);
   }, [conversation.id]);
 
   const handleNewMessage = useCallback((message: any) => {
-    if (message.conversation_id === conversation.id) {
-      setMessages((prev) => [...prev, message]);
+    if (message.conversation_id === conversationIdRef.current) {
+      // If viewing this conversation, add to messages and mark as read
+      setMessages((prev) => {
+        // Check if message already exists to prevent duplicates
+        const exists = prev.some(m => m.id === message.id);
+        if (exists) {
+          return prev;
+        }
+        return [...prev, message];
+      });
 
       // Mark as read
-      socketService.markAsRead(conversation.id);
-
-      // Notify parent to update conversation order
-      onMessageSent?.(conversation.id);
+      socketService.markAsRead(conversationIdRef.current);
     }
-  }, [conversation.id, onMessageSent]);
+    // Note: Sidebar update is handled by global listener in Chat.tsx
+  }, []);
 
   const handleUserTyping = useCallback((data: { userId: number; conversationId: number; isTyping: boolean }) => {
     if (data.conversationId === conversation.id && data.userId !== user?.id) {
@@ -106,15 +121,27 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     loadMessages();
     joinConversation();
 
-    // Listen for new messages
+    // Rejoin conversation if socket reconnects
+    socketService.onReconnect(() => {
+      joinConversation();
+    });
+
+    // Reload sidebar after opening conversation to clear unread badge
+    setTimeout(() => {
+      onMessageSent?.(conversation.id);
+    }, 300);
+  }, [conversation.id, loadMessages, joinConversation, onMessageSent]);
+
+  // Set up WebSocket listeners separately to avoid re-registering
+  useEffect(() => {
     socketService.onNewMessage(handleNewMessage);
     socketService.onUserTyping(handleUserTyping);
 
     return () => {
-      socketService.offNewMessage();
+      socketService.offNewMessage(handleNewMessage);
       socketService.offUserTyping();
     };
-  }, [conversation.id, loadMessages, joinConversation, handleNewMessage, handleUserTyping]);
+  }, [handleNewMessage, handleUserTyping]);
 
   useEffect(() => {
     scrollToBottom();

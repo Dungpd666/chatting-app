@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import ChatArea from '../components/ChatArea';
 import { Conversation } from '../types';
+import { socketService } from '../services/socket';
 
 const Chat: React.FC = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -13,6 +14,23 @@ const Chat: React.FC = () => {
       sidebarRef.current.loadConversations();
     }
   };
+
+  // Set up global message listener to update sidebar for all messages
+  useEffect(() => {
+    const handleGlobalMessage = (message: any) => {
+      // Delay sidebar update to allow markAsRead to complete first
+      // This prevents showing unread count for messages you're currently viewing
+      setTimeout(() => {
+        handleMessageSent(message.conversation_id);
+      }, 250);
+    };
+
+    socketService.onNewMessage(handleGlobalMessage);
+
+    return () => {
+      socketService.offNewMessage(handleGlobalMessage);
+    };
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">

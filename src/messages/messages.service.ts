@@ -69,10 +69,11 @@ export class MessagesService {
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.user', 'user')
       .where('msg.conversation_id = :conversationId', { conversationId })
-      .orderBy('msg.created_at', 'ASC')
+      .orderBy('msg.created_at', 'DESC')
       .limit(limit);
 
     if (cursor) {
+      // For pagination, get messages older than cursor
       queryBuilder.andWhere('msg.id < :cursor', { cursor });
     }
 
@@ -81,8 +82,10 @@ export class MessagesService {
     const hasMore = messages.length === limit;
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
 
+    const orderedMessages = messages.reverse();
+
     return {
-      messages: messages.map(msg => ({
+      messages: orderedMessages.map(msg => ({
         id: msg.id,
         conversation_id: msg.conversation_id,
         content: msg.content,

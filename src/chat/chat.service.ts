@@ -69,4 +69,11 @@ export class ChatService {
             },
         );
     }
+
+    async getConversationMembers(conversationId: string): Promise<number[]> {
+        const members = await this.memberRepository.find({
+            where: { conversation_id: parseInt(conversationId) },
+        });
+        return members.map(member => member.user_id);
+    }
 }

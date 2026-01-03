@@ -6,6 +6,8 @@ const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3636';
 class SocketService {
   private socket: Socket | null = null;
   private token: string | null = null;
+  private reconnectCallback: (() => void) | null = null;
+  private messageCallbacks: Set<(message: any) => void> = new Set();
 
   connect(token: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -19,7 +21,10 @@ class SocketService {
       });
 
       this.socket.on('connect', () => {
-        console.log('Socket connected:', this.socket?.id);
+        if (this.reconnectCallback) {
+          this.reconnectCallback();
+        }
+
         resolve();
       });
 
@@ -36,6 +41,10 @@ class SocketService {
         console.log('Socket disconnected:', reason);
       });
     });
+  }
+
+  onReconnect(callback: () => void): void {
+    this.reconnectCallback = callback;
   }
 
   disconnect(): void {
@@ -80,13 +89,19 @@ class SocketService {
   onNewMessage(
     callback: (message: Message & { sender: { id: number; username: string; email: string; avatar?: string } }) => void
   ): void {
-    if (this.socket) {
-      this.socket.on('new_message', callback);
+    this.messageCallbacks.add(callback);
+
+    if (this.socket && this.messageCallbacks.size === 1) {
+      this.socket.off('new_message');
+      this.socket.on('new_message', (message) => {
+        this.messageCallbacks.forEach(cb => cb(message));
+      });
     }
   }
 
   onUserTyping(callback: (data: { userId: number; conversationId: number; isTyping: boolean }) => void): void {
     if (this.socket) {
+      this.socket.off('user_typing');
       this.socket.on('user_typing', callback);
     }
   }
@@ -103,8 +118,14 @@ class SocketService {
     }
   }
 
-  offNewMessage(): void {
-    if (this.socket) {
+  offNewMessage(callback?: (message: any) => void): void {
+    if (callback) {
+      this.messageCallbacks.delete(callback);
+    } else {
+      this.messageCallbacks.clear();
+    }
+
+    if (this.messageCallbacks.size === 0 && this.socket) {
       this.socket.off('new_message');
     }
   }
