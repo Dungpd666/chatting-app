@@ -12,6 +12,7 @@ import { User } from "./users/entities/user.entity";
 import { Conversation } from "./conversations/entities/conversation.entity";
 import { ConversationMember } from "./conversation_members/entities/conversation_member.entity";
 import { Message } from "./messages/entities/message.entity";
+import {ChatModule} from "./chat/chat.module";
 
 
 @Module({
@@ -35,6 +36,7 @@ import { Message } from "./messages/entities/message.entity";
         ConversationMembersModule,
         MessagesModule,
         AuthModule,
+        ChatModule,
     ],  controllers: [AppController],
   providers: [AppService],
 })

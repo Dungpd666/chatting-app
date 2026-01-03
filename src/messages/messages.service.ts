@@ -69,7 +69,7 @@ export class MessagesService {
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.user', 'user')
       .where('msg.conversation_id = :conversationId', { conversationId })
-      .orderBy('msg.created_at', 'DESC')
+      .orderBy('msg.created_at', 'ASC')
       .limit(limit);
 
     if (cursor) {
@@ -130,5 +130,45 @@ export class MessagesService {
 
   remove(id: number) {
     return this.messageRepository.delete(id);
+  }
+
+  async searchMessages(
+    userId: number,
+    conversationId: number,
+    searchQuery: string,
+    limit: number = 50,
+  ) {
+    const isMember = await this.conversationMemberRepository.findOne({
+      where: { conversation_id: conversationId, user_id: userId },
+    });
+    if (!isMember) {
+      throw new ForbiddenException('You are not a member of this conversation');
+    }
+
+    if (!searchQuery || searchQuery.trim() === '') {
+      return [];
+    }
+
+    const messages = await this.messageRepository
+      .createQueryBuilder('msg')
+      .leftJoinAndSelect('msg.user', 'user')
+      .where('msg.conversation_id = :conversationId', { conversationId })
+      .andWhere('msg.content ILIKE :query', { query: `%${searchQuery}%` })
+      .orderBy('msg.created_at', 'DESC')
+      .limit(limit)
+      .getMany();
+
+    return messages.map(msg => ({
+      id: msg.id,
+      conversation_id: msg.conversation_id,
+      content: msg.content,
+      message_type: msg.message_type,
+      created_at: msg.created_at,
+      user: {
+        id: msg.user.id,
+        username: msg.user.username,
+        avatar: msg.user.avatar,
+      },
+    }));
   }
 }

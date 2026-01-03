@@ -15,6 +15,21 @@ export class MessagesController {
     return this.messagesService.create(user.sub, createMessageDto);
   }
 
+  @Get('conversation/:conversationId/search')
+  searchMessages(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Query('q') query: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.messagesService.searchMessages(
+      user.sub,
+      +conversationId,
+      query,
+      limit ? +limit : 50,
+    );
+  }
+
   @Get('conversation/:conversationId')
   findByConversation(
     @CurrentUser() user: any,
