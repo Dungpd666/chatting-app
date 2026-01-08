@@ -29,7 +29,20 @@ import {ChatModule} from "./chat/chat.module";
             password: process.env.DB_PASS,
             database: process.env.DB_NAME,
             entities: [User, Conversation, ConversationMember, Message],
-            synchronize: true
+            synchronize: process.env.NODE_ENV !== 'production',
+            migrations: ['dist/database/migrations/*.js'],
+            migrationsRun: process.env.NODE_ENV === 'production',
+            extra: {
+                max: 20,
+                min: 5,
+                idleTimeoutMillis: 30000,
+                connectionTimeoutMillis: 2000,
+            },
+            cache: {
+                type: 'database',
+                duration: 60000,
+            },
+            logging: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
         }),
         UsersModule,
         ConversationsModule,

@@ -60,6 +60,7 @@ export class MessagesService {
   ) {
     const isMember = await this.conversationMemberRepository.findOne({
       where: { conversation_id: conversationId, user_id: userId },
+      cache: true,
     });
     if (!isMember) {
       throw new ForbiddenException('You are not a member of this conversation');
@@ -69,23 +70,24 @@ export class MessagesService {
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.user', 'user')
       .where('msg.conversation_id = :conversationId', { conversationId })
-      .orderBy('msg.created_at', 'DESC')
-      .limit(limit);
+      .orderBy('msg.created_at', 'ASC')
+      .addOrderBy('msg.id', 'ASC')
+      .limit(limit + 1);
 
     if (cursor) {
-      // For pagination, get messages older than cursor
-      queryBuilder.andWhere('msg.id < :cursor', { cursor });
+      queryBuilder.andWhere('msg.id > :cursor', { cursor });
     }
 
     const messages = await queryBuilder.getMany();
 
-    const hasMore = messages.length === limit;
+    const hasMore = messages.length > limit;
+    if (hasMore) {
+      messages.pop();
+    }
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
 
-    const orderedMessages = messages.reverse();
-
     return {
-      messages: orderedMessages.map(msg => ({
+      messages: messages.map(msg => ({
         id: msg.id,
         conversation_id: msg.conversation_id,
         content: msg.content,
@@ -143,6 +145,7 @@ export class MessagesService {
   ) {
     const isMember = await this.conversationMemberRepository.findOne({
       where: { conversation_id: conversationId, user_id: userId },
+      cache: true,
     });
     if (!isMember) {
       throw new ForbiddenException('You are not a member of this conversation');
@@ -156,8 +159,16 @@ export class MessagesService {
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.user', 'user')
       .where('msg.conversation_id = :conversationId', { conversationId })
-      .andWhere('msg.content ILIKE :query', { query: `%${searchQuery}%` })
-      .orderBy('msg.created_at', 'DESC')
+      .andWhere(
+        "to_tsvector('english', msg.content) @@ plainto_tsquery('english', :query)",
+        { query: searchQuery }
+      )
+      .orderBy(
+        "ts_rank(to_tsvector('english', msg.content), plainto_tsquery('english', :query))",
+        'DESC'
+      )
+      .setParameter('query', searchQuery)
+      .addOrderBy('msg.created_at', 'DESC')
       .limit(limit)
       .getMany();
 
