@@ -1,4 +1,4 @@
-  import { io, Socket } from 'socket.io-client';
+import { io, Socket } from 'socket.io-client';
 import { Message } from '../types';
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3636';
@@ -8,19 +8,33 @@ class SocketService {
   private token: string | null = null;
   private reconnectCallback: (() => void) | null = null;
   private messageCallbacks: Set<(message: any) => void> = new Set();
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
 
   connect(token: string): Promise<void> {
     return new Promise((resolve, reject) => {
       this.token = token;
+
+      if (this.socket) {
+        this.socket.disconnect();
+      }
 
       this.socket = io(SOCKET_URL, {
         auth: {
           token,
         },
         transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
       });
 
       this.socket.on('connect', () => {
+        console.log('Socket connected successfully');
+        this.reconnectAttempts = 0;
+
         if (this.reconnectCallback) {
           this.reconnectCallback();
         }
@@ -30,7 +44,11 @@ class SocketService {
 
       this.socket.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
-        reject(error);
+        this.reconnectAttempts++;
+
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          reject(new Error('Max reconnection attempts reached'));
+        }
       });
 
       this.socket.on('error', (error) => {
@@ -39,6 +57,28 @@ class SocketService {
 
       this.socket.on('disconnect', (reason) => {
         console.log('Socket disconnected:', reason);
+
+        if (reason === 'io server disconnect') {
+          setTimeout(() => {
+            if (this.token) {
+              this.connect(this.token);
+            }
+          }, 1000);
+        }
+      });
+
+      this.socket.on('reconnect', (attemptNumber) => {
+        console.log(`Socket reconnected after ${attemptNumber} attempts`);
+        this.reconnectAttempts = 0;
+      });
+
+      this.socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`Socket reconnection attempt ${attemptNumber}`);
+      });
+
+      this.socket.on('reconnect_failed', () => {
+        console.error('Socket reconnection failed');
+        reject(new Error('Reconnection failed'));
       });
     });
   }

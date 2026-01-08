@@ -1,0 +1,47 @@
+ Session Summary
+
+  Task: Sort sidebar conversations by latest message time
+
+  Changes Made:
+
+  1. Backend Fix - WebSocket message handling
+
+  File: /home/dungpd/WebstormProjects/chatting-app/src/chat/chat.service.ts
+  - Added Conversation repository injection
+  - Updated createMessage() method to update conversation.last_message_at when messages are sent via WebSocket
+  - Previously, only REST API messages updated this field, causing sorting issues
+
+  File: /home/dungpd/WebstormProjects/chatting-app/src/chat/chat.module.ts
+  - Added Conversation entity to TypeOrmModule.forFeature()
+
+  2. Frontend Sorting - Sidebar conversations
+
+  File: /home/dungpd/WebstormProjects/chatting-app/client/src/components/Sidebar.tsx
+  - Added useMemo to sort conversations by last_message_at DESC (most recent first)
+  - Used forwardRef to expose loadConversations() method to parent component
+  - Added useImperativeHandle to allow parent to trigger conversation reload
+
+  3. Real-time Updates - Conversation list refresh
+
+  File: /home/dungpd/WebstormProjects/chatting-app/client/src/pages/Chat.tsx
+  - Added useRef for Sidebar component
+  - Added handleMessageSent() callback that triggers loadConversations() when messages are sent
+
+  File: /home/dungpd/WebstormProjects/chatting-app/client/src/components/ChatArea.tsx
+  - Added onMessageSent prop to interface
+  - Updated handleNewMessage() to call onMessageSent() when receiving messages
+  - Passed onMessageSent to MessageInput component
+
+  File: /home/dungpd/WebstormProjects/chatting-app/client/src/components/MessageInput.tsx
+  - Added onMessageSent prop to interface
+  - Called onMessageSent() after successfully sending a message
+
+  Result:
+
+  Conversations in the sidebar now automatically sort by most recent message time. When a message is sent or received, the conversation list reloads and re-sorts to show the most recently active conversation at the
+  top.
+
+  Backend Already Handled:
+
+  - conversations.service.ts:123 already sorted conversations by last_message_at DESC in the database query
+  - REST API message creation already updated last_message_at field

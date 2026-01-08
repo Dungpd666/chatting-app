@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { socketService } from '../services/socket';
+import { throttle } from '../utils/debounce';
 
 interface MessageInputProps {
   conversationId: number;
@@ -7,18 +8,26 @@ interface MessageInputProps {
   onMessageSent?: (conversationId: number) => void;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping, onMessageSent }) => {
+const MessageInput: React.FC<MessageInputProps> = React.memo(({ conversationId, onTyping, onMessageSent }) => {
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Throttled typing indicator to reduce WebSocket traffic
+  const throttledTypingStart = useCallback(
+    throttle((convId: number) => {
+      socketService.sendTyping(convId, true);
+    }, 2000), // Match server throttle of 2 seconds
+    []
+  );
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
 
-    // Handle typing indicator
+    // Handle typing indicator with throttling
     if (!isTyping && e.target.value.length > 0) {
       setIsTyping(true);
-      socketService.sendTyping(conversationId, true);
+      throttledTypingStart(conversationId);
       onTyping?.(true);
     }
 
@@ -33,7 +42,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping, o
         setIsTyping(false);
         socketService.sendTyping(conversationId, false);
         onTyping?.(false);
-      }, 1000);
+      }, 2000); // Increased from 1s to 2s to match throttle
     } else {
       setIsTyping(false);
       socketService.sendTyping(conversationId, false);
@@ -115,6 +124,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping, o
       </div>
     </form>
   );
-};
+});
+
+MessageInput.displayName = 'MessageInput';
 
 export default MessageInput;

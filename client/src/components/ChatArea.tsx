@@ -1,16 +1,17 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Conversation, Message } from '../types';
 import { messagesAPI } from '../services/api';
 import { socketService } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import MessageInput from './MessageInput';
+import { debounce } from '../utils/debounce';
 
 interface ChatAreaProps {
   conversation: Conversation;
   onMessageSent?: (conversationId: number) => void;
 }
 
-const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
+const ChatArea: React.FC<ChatAreaProps> = React.memo(({ conversation, onMessageSent }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState<number[]>([]);
@@ -180,17 +181,17 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     return currentDate !== previousDate;
   };
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-
+  // Debounced search function to reduce API calls
+  const performSearch = useCallback(async (query: string, conversationId: number) => {
     if (!query || query.trim() === '') {
       setSearchResults([]);
+      setSearchLoading(false);
       return;
     }
 
     setSearchLoading(true);
     try {
-      const results = await messagesAPI.searchMessages(conversation.id, query);
+      const results = await messagesAPI.searchMessages(conversationId, query);
       console.log('Search results:', results);
       setSearchResults(results);
     } catch (error) {
@@ -199,6 +200,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     } finally {
       setSearchLoading(false);
     }
+  }, []);
+
+  // Create debounced version - memoize so it doesn't recreate on every render
+  const debouncedSearch = useMemo(
+    () => debounce(performSearch, 500),
+    [performSearch]
+  );
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setSearchLoading(!!query.trim());
+    debouncedSearch(query, conversation.id);
   };
 
   const handleSearchToggle = () => {
@@ -549,6 +562,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
       </div>
     </div>
   );
-};
+});
+
+ChatArea.displayName = 'ChatArea';
 
 export default ChatArea;
