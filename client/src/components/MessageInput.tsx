@@ -33,7 +33,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ conversationId, onTyping, o
         setIsTyping(false);
         socketService.sendTyping(conversationId, false);
         onTyping?.(false);
-      }, 1000);
+      }, 2500);
     } else {
       setIsTyping(false);
       socketService.sendTyping(conversationId, false);

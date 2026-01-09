@@ -38,8 +38,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
                 return;
             }
 
-            const payload = this.jwtService.verify(token);
-            client.data.user = payload;
+            client.data.user = this.jwtService.verify(token);
 
             const userId = client.data.user?.sub || client.data.user?.id;
 
@@ -175,12 +174,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
     ) {
         const userId = client.data.user.sub || client.data.user.id;
         const { conversationId, isTyping } = data;
+        const convId = parseInt(conversationId, 10);
 
         client.to(`conversation_${conversationId}`).emit('user_typing', {
             userId,
-            conversationId,
+            conversationId: convId,
             isTyping,
         });
     }
 }
-

@@ -6,6 +6,7 @@ import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { Conversation } from "./entities/conversation.entity";
 import { ConversationMember } from "../conversation_members/entities/conversation_member.entity";
 import { UsersService } from '../users/users.service';
+import { Message } from '../messages/entities/message.entity';
 
 @Injectable()
 export class ConversationsService {
@@ -14,6 +15,8 @@ export class ConversationsService {
     private conversationRepository: Repository<Conversation>,
     @InjectRepository(ConversationMember)
     private conversationMemberRepository: Repository<ConversationMember>,
+    @InjectRepository(Message)
+    private messageRepository: Repository<Message>,
     private usersService: UsersService,
   ) {}
 
@@ -28,10 +31,6 @@ export class ConversationsService {
         type = 'group';
         participant_ids = user_ids;
       }
-    }
-
-    if (type === 'private') {
-      type = 'direct';
     }
 
     if (type === 'direct' && !participant_id) {
@@ -124,7 +123,7 @@ export class ConversationsService {
       .addOrderBy('conv.created_at', 'DESC')
       .getMany();
 
-    const result = await Promise.all(
+    return Promise.all(
       conversations.map(async (conv) => {
         const members = await this.conversationMemberRepository
           .createQueryBuilder('cm')
@@ -140,24 +139,31 @@ export class ConversationsService {
         if (member && conv.last_message_at) {
           const lastSeenAt = member.last_seen_at || member.joined_at;
           if (conv.last_message_at > lastSeenAt) {
-            unreadCount = await this.conversationRepository.query(
-              `SELECT COUNT(*) as count FROM messages
-               WHERE conversation_id = $1 AND created_at > $2`,
-              [conv.id, lastSeenAt]
-            ).then(result => parseInt(result[0].count));
+            unreadCount = await this.messageRepository
+              .createQueryBuilder('m')
+              .where('m.conversation_id = :convId', { convId: conv.id })
+              .andWhere('m.created_at > :lastSeenAt', { lastSeenAt })
+              .getCount();
           }
         }
 
-        const lastMessage = await this.conversationRepository.query(
-          `SELECT m.id, m.content, m.message_type, m.created_at, m.user_id as sender_id,
-                  u.username as sender_username
-           FROM messages m
-           LEFT JOIN users u ON u.id = m.user_id
-           WHERE m.conversation_id = $1
-           ORDER BY m.created_at DESC
-           LIMIT 1`,
-          [conv.id]
-        ).then(result => result[0] || null);
+        const lastMessageEntity = await this.messageRepository
+          .createQueryBuilder('m')
+          .leftJoinAndSelect('m.user', 'user')
+          .where('m.conversation_id = :convId', { convId: conv.id })
+          .orderBy('m.created_at', 'DESC')
+          .getOne();
+
+        const lastMessage = lastMessageEntity
+          ? {
+              id: lastMessageEntity.id,
+              content: lastMessageEntity.content,
+              message_type: lastMessageEntity.message_type,
+              created_at: lastMessageEntity.created_at,
+              sender_id: lastMessageEntity.user_id,
+              sender_username: lastMessageEntity.user?.username,
+            }
+          : null;
 
         return {
           ...conv,
@@ -173,8 +179,6 @@ export class ConversationsService {
         };
       })
     );
-
-    return result;
   }
 
   async findOne(userId: number, id: number) {

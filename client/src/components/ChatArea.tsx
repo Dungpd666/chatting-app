@@ -103,7 +103,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
       socketService.markAsRead(conversationIdRef.current);
     }
     // Note: Sidebar update is handled by global listener in Chat.tsx
-  }, []);
+  }, [onMessageSent]);
 
   const handleUserTyping = useCallback((data: { userId: number; conversationId: number; isTyping: boolean }) => {
     if (data.conversationId === conversation.id && data.userId !== user?.id) {
@@ -406,8 +406,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
         )}
         {typingUsers.length > 0 && (
           <div className="flex justify-start">
-            <div className="bg-white px-4 py-3 rounded-2xl shadow-sm">
-              <div className="flex space-x-1">
+            <div className="flex items-end space-x-2">
+              {typingUsers.slice(0, 3).map((id) => {
+                const member = (conversation.members || []).find(m => (m as any).user_id === id || (m as any).id === id);
+                const initial = member?.username?.charAt(0).toUpperCase() || '?';
+                const avatar = member?.avatar;
+                return (
+                  <div
+                    key={id}
+                    className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center text-sm font-semibold text-gray-700 border border-gray-100 shadow-sm"
+                  >
+                    {avatar ? (
+                      <img src={avatar} alt={member?.username || 'User'} className="w-full h-full object-cover" />
+                    ) : (
+                      initial
+                    )}
+                  </div>
+                );
+              })}
+              <div className="bg-white px-3 py-2 rounded-2xl shadow-sm flex items-center space-x-1 border border-gray-100">
                 {[0, 150, 300].map((delay) => (
                   <div key={delay} className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: `${delay}ms` }}></div>
                 ))}
