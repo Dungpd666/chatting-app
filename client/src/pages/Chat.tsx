@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import ChatArea from '../components/ChatArea';
 import { Conversation } from '../types';
@@ -7,19 +7,24 @@ import { socketService } from '../services/socket';
 const Chat: React.FC = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const sidebarRef = useRef<any>(null);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleMessageSent = (conversationId: number) => {
+  const handleMessageSent = useCallback((conversationId: number) => {
     // Reload conversations to update order
-    if (sidebarRef.current?.loadConversations) {
-      sidebarRef.current.loadConversations();
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
     }
-  };
+    refreshTimeoutRef.current = setTimeout(() => {
+      if (sidebarRef.current?.loadConversations) {
+        sidebarRef.current.loadConversations();
+      }
+    }, 150);
+  }, []);
 
   // Set up global message listener to update sidebar for all messages
   useEffect(() => {
     const handleGlobalMessage = (message: any) => {
       // Delay sidebar update to allow markAsRead to complete first
-      // This prevents showing unread count for messages you're currently viewing
       setTimeout(() => {
         handleMessageSent(message.conversation_id);
       }, 250);
@@ -28,9 +33,12 @@ const Chat: React.FC = () => {
     socketService.onNewMessage(handleGlobalMessage);
 
     return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
       socketService.offNewMessage(handleGlobalMessage);
     };
-  }, []);
+  }, [handleMessageSent]);
 
   return (
     <div className="flex h-screen overflow-hidden">

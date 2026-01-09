@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Conversation, Message } from '../types';
-import { messagesAPI } from '../services/api';
+import { messagesAPI, conversationsAPI, usersAPI } from '../services/api';
 import { socketService } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import MessageInput from './MessageInput';
@@ -19,10 +19,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [addUserIds, setAddUserIds] = useState<number[]>([]);
+  const [memberActionLoading, setMemberActionLoading] = useState(false);
+  const [members, setMembers] = useState<any[]>(conversation.members || conversation.participants || []);
+  const [showAddModal, setShowAddModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const conversationIdRef = useRef<number>(conversation.id);
   const { user } = useAuth();
+
+  const isGroup = conversation.type === 'group';
+  const currentUserIsAdmin = isGroup && members.some((m: any) => (m.user_id ?? m.id) === user?.id && m.is_admin);
 
   // Update ref when conversation changes
   useEffect(() => {
@@ -31,11 +39,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
 
   // Get members list for display
   const membersList = React.useMemo(() => {
-    const members = conversation.members || conversation.participants || [];
+    const list = members.length > 0 ? members : conversation.participants || [];
 
-    if (members.length > 0) {
+    if (list.length > 0) {
       // Ensure each member has a proper ID
-      return members.map((member: any, idx: number) => ({
+      return list.map((member: any, idx: number) => ({
         ...member,
         id: member.id || member.user_id || `member-${idx}`,
       }));
@@ -64,7 +72,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
       });
     }
     return fallbackMembers;
-  }, [conversation, user]);
+  }, [members, conversation, user]);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -218,6 +226,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
       setTimeout(() => messageElement.classList.remove('bg-yellow-100'), 2000);
     }
   };
+
+  useEffect(() => {
+    if ((showInfo || showAddModal) && isGroup && currentUserIsAdmin) {
+      usersAPI.getAll().then(setAvailableUsers).catch(() => setAvailableUsers([]));
+    }
+  }, [showInfo, showAddModal, isGroup, currentUserIsAdmin]);
+
+  useEffect(() => {
+    setMembers(conversation.members || conversation.participants || []);
+  }, [conversation.id, conversation.members, conversation.participants]);
 
   return (
     <div className="flex-1 flex flex-row bg-gray-50 h-screen">
@@ -476,15 +494,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
 
           {/* Members Section */}
           <div className="p-4 border-b border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              Members {(() => {
-                const allMembers = conversation.members || conversation.participants || [];
-                const totalMembers = allMembers.length > 0 ? allMembers.length : (conversation.otherUser ? 2 : 1);
-                return `(${totalMembers})`;
-              })()}
+            <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
+              <span className="flex items-center">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Members {(() => {
+                  const allMembers = conversation.members || conversation.participants || [];
+                  const totalMembers = allMembers.length > 0 ? allMembers.length : (conversation.otherUser ? 2 : 1);
+                  return `(${totalMembers})`;
+                })()}
+              </span>
+              {isGroup && currentUserIsAdmin && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  Add
+                </button>
+              )}
             </h4>
             <div className="space-y-3">
               {membersList.map((member: any, index: number) => {
@@ -513,7 +541,33 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
                         {member.email || ''}
                       </p>
                     </div>
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div className="flex items-center space-x-2">
+                      {!isCurrentUser && currentUserIsAdmin && isGroup && (
+                        <button
+                          onClick={async () => {
+                            const memberId = member.user_id ?? member.id;
+                            if (!memberId || isNaN(Number(memberId))) {
+                              console.error('Invalid member id');
+                              return;
+                            }
+                            setMemberActionLoading(true);
+                            try {
+                              await conversationsAPI.removeMember(conversation.id, Number(memberId));
+                              setMembers((prev) => prev.filter((m: any) => (m.user_id ?? m.id) !== memberId));
+                            } catch (err) {
+                              console.error('Failed to remove member', err);
+                              alert('Cannot remove member: ' + ((err as any)?.response?.data?.message || 'Not found'));
+                            } finally {
+                              setMemberActionLoading(false);
+                            }
+                          }}
+                          className="text-xs text-red-500 hover:text-red-600"
+                          disabled={memberActionLoading}
+                        >
+                          Kick
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -564,6 +618,86 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
           </div>
         </div>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">Add members</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="max-h-64 overflow-y-auto border rounded">
+              {availableUsers
+                .filter(u => !members.some((m: any) => (m.user_id ?? m.id) === u.id))
+                .map(u => (
+                  <label key={u.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{u.username}</p>
+                      <p className="text-xs text-gray-500">{u.email}</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={addUserIds.includes(u.id)}
+                      onChange={(e) => {
+                        setAddUserIds((prev) =>
+                          e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id)
+                        );
+                      }}
+                    />
+                  </label>
+                ))}
+              {availableUsers.filter(u => !members.some((m: any) => (m.user_id ?? m.id) === u.id)).length === 0 && (
+                <p className="text-sm text-gray-500 p-3">No users available to add.</p>
+              )}
+            </div>
+            <div className="flex items-center justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setAddUserIds([]);
+                  setShowAddModal(false);
+                }}
+                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (addUserIds.length === 0) return;
+                  setMemberActionLoading(true);
+                  try {
+                    await conversationsAPI.addMembers(conversation.id, addUserIds);
+                    const newMembers = addUserIds
+                      .filter(id => !members.some((m: any) => (m.user_id ?? m.id) === id))
+                      .map(id => {
+                        const userInfo = availableUsers.find(u => u.id === id);
+                        return {
+                          user_id: id,
+                          id,
+                          username: userInfo?.username,
+                          email: userInfo?.email,
+                          avatar: userInfo?.avatar,
+                        };
+                      });
+                    setMembers((prev) => [...prev, ...newMembers]);
+                    setAddUserIds([]);
+                    setShowAddModal(false);
+                  } catch (err) {
+                    console.error('Failed to add members', err);
+                    alert('Cannot add members: ' + ((err as any)?.response?.data?.message || 'Error'));
+                  } finally {
+                    setMemberActionLoading(false);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                disabled={memberActionLoading}
+              >
+                Add selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
