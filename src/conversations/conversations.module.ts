@@ -5,11 +5,12 @@ import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMember } from '../conversation_members/entities/conversation_member.entity';
+import { Message } from '../messages/entities/message.entity';
 import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Conversation, ConversationMember]),
+    TypeOrmModule.forFeature([Conversation, ConversationMember, Message]),
     UsersModule,
     JwtModule,
   ],
