@@ -78,6 +78,27 @@ export const conversationsAPI = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/conversations/${id}`);
   },
+
+  addMembers: async (
+    conversationId: number,
+    user_ids: number[]
+  ): Promise<{ added: number; skipped: number }> => {
+    const response = await api.post(
+      `/conversations/${conversationId}/members`,
+      { user_ids }
+    );
+    return response.data;
+  },
+
+  removeMember: async (
+    conversationId: number,
+    userId: number
+  ): Promise<{ removed: boolean }> => {
+    const response = await api.delete(
+      `/conversations/${conversationId}/members/${userId}`
+    );
+    return response.data;
+  },
 };
 
 // Messages API

@@ -7,6 +7,8 @@ import { Conversation } from "./entities/conversation.entity";
 import { ConversationMember } from "../conversation_members/entities/conversation_member.entity";
 import { UsersService } from '../users/users.service';
 import { Message } from '../messages/entities/message.entity';
+import { AddMembersDto } from './dto/add-members.dto';
+import { RemoveMemberDto } from './dto/remove-member.dto';
 
 @Injectable()
 export class ConversationsService {
@@ -223,5 +225,49 @@ export class ConversationsService {
 
   remove(id: number) {
     return this.conversationRepository.delete(id);
+  }
+
+  async addMembers(adminUserId: number, conversationId: number, dto: AddMembersDto) {
+    const uniqueIds = [...new Set(dto.user_ids)].filter(id => id !== adminUserId);
+    if (uniqueIds.length === 0) throw new BadRequestException('No valid members to add');
+
+    const existingMembers = await this.conversationMemberRepository.find({
+      where: uniqueIds.map(id => ({ conversation_id: conversationId, user_id: id })),
+    });
+    const existingIds = new Set(existingMembers.map(m => m.user_id));
+    const toCreate = uniqueIds.filter(id => !existingIds.has(id));
+
+    if (toCreate.length === 0) {
+      return { added: 0, skipped: existingIds.size };
+    }
+
+    const newMembers = toCreate.map(id =>
+      this.conversationMemberRepository.create({
+        conversation_id: conversationId,
+        user_id: id,
+        joined_at: new Date(),
+        is_admin: false,
+      })
+    );
+    await this.conversationMemberRepository.save(newMembers);
+
+    return { added: newMembers.length, skipped: existingIds.size };
+  }
+
+  async removeMember(adminUserId: number, conversationId: number, dto: RemoveMemberDto) {
+    const { user_id } = dto;
+
+    const targetMember = await this.conversationMemberRepository.findOne({ where: { conversation_id: conversationId, user_id } });
+    if (!targetMember) throw new NotFoundException('Target member not found in this conversation');
+
+    if (targetMember.is_admin) {
+      const adminCount = await this.conversationMemberRepository.count({ where: { conversation_id: conversationId, is_admin: true } });
+      if (adminCount <= 1) {
+        throw new BadRequestException('Cannot remove the last admin');
+      }
+    }
+
+    await this.conversationMemberRepository.delete({ conversation_id: conversationId, user_id });
+    return { removed: true };
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useState, useMemo, useImperativeHandle, forwardRef, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Conversation } from '../types';
 import { conversationsAPI } from '../services/api';
@@ -16,6 +16,12 @@ const Sidebar = forwardRef<any, SidebarProps>(({ selectedConversation, onSelectC
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const requestIdRef = useRef(0);
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const lastLoadRef = useRef(0);
+  const MIN_INTERVAL_MS = 500;
+  const didInitRef = useRef(false);
+  const selectionInFlightRef = useRef<Promise<void> | null>(null);
 
   // Sort conversations by last_message_at (most recent first)
   const sortedConversations = useMemo(() => {
@@ -27,24 +33,51 @@ const Sidebar = forwardRef<any, SidebarProps>(({ selectedConversation, onSelectC
   }, [conversations]);
 
   useEffect(() => {
-    loadConversations();
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    loadConversations(true);
   }, []);
 
-  const loadConversations = async () => {
-    try {
-      const data = await conversationsAPI.getAll();
-      setConversations(data);
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
-    } finally {
-      setLoading(false);
+  const loadConversations = async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastLoadRef.current < MIN_INTERVAL_MS) {
+      return inFlightRef.current || Promise.resolve();
     }
+    if (inFlightRef.current) return inFlightRef.current;
+
+    const requestId = ++requestIdRef.current;
+    const promise = (async () => {
+      try {
+        const data = await conversationsAPI.getAll();
+        if (requestId !== requestIdRef.current) return; // ignore stale responses
+        setConversations(data);
+      } catch (error) {
+        console.error('Failed to load conversations:', error);
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+          lastLoadRef.current = Date.now();
+        }
+        inFlightRef.current = null;
+      }
+    })();
+
+    inFlightRef.current = promise;
+    return promise;
   };
 
   // Expose loadConversations method to parent
   useImperativeHandle(ref, () => ({
-    loadConversations
+    loadConversations,
   }));
+
+  useEffect(() => {
+    if (!selectedConversation) return;
+    const refreshed = conversations.find(c => c.id === selectedConversation.id);
+    if (refreshed && refreshed !== selectedConversation) {
+      onSelectConversation(refreshed);
+    }
+  }, [conversations, selectedConversation, onSelectConversation]);
 
   const handleConversationCreated = (conversation: Conversation) => {
     setConversations(prev => [conversation, ...prev]);
@@ -76,6 +109,23 @@ const Sidebar = forwardRef<any, SidebarProps>(({ selectedConversation, onSelectC
   const getAvatar = (conversation: Conversation) => {
     const name = getConversationName(conversation);
     return name.charAt(0).toUpperCase();
+  };
+
+  const selectConversation = async (conversation: Conversation) => {
+    if (selectionInFlightRef.current) return selectionInFlightRef.current;
+    const promise = (async () => {
+      try {
+        const detailed = await conversationsAPI.getOne(conversation.id);
+        onSelectConversation(detailed);
+      } catch (err) {
+        console.error('Failed to fetch conversation detail, using cached item', err);
+        onSelectConversation(conversation);
+      } finally {
+        selectionInFlightRef.current = null;
+      }
+    })();
+    selectionInFlightRef.current = promise;
+    return promise;
   };
 
   return (
@@ -165,7 +215,7 @@ const Sidebar = forwardRef<any, SidebarProps>(({ selectedConversation, onSelectC
           sortedConversations.map((conversation) => (
             <div
               key={conversation.id}
-              onClick={() => onSelectConversation(conversation)}
+              onClick={() => selectConversation(conversation)}
               className={`flex items-center p-4 border-b border-gray-100 cursor-pointer transition hover:bg-gray-50 ${
                 selectedConversation?.id === conversation.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
               }`}

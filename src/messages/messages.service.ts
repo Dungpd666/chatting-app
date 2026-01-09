@@ -90,11 +90,13 @@ export class MessagesService {
         content: msg.content,
         message_type: msg.message_type,
         created_at: msg.created_at,
-        user: {
-          id: msg.user.id,
-          username: msg.user.username,
-          avatar: msg.user.avatar,
-        },
+        user: msg.user
+          ? {
+              id: msg.user.id,
+              username: msg.user.username,
+              avatar: msg.user.avatar,
+            }
+          : null,
       })),
       has_more: hasMore,
       next_cursor: nextCursor,
@@ -118,11 +120,13 @@ export class MessagesService {
       content: message.content,
       message_type: message.message_type,
       created_at: message.created_at,
-      user: {
-        id: message.user.id,
-        username: message.user.username,
-        avatar: message.user.avatar,
-      },
+      user: message.user
+        ? {
+            id: message.user.id,
+            username: message.user.username,
+            avatar: message.user.avatar,
+          }
+        : null,
     };
   }
 
@@ -166,11 +170,13 @@ export class MessagesService {
       content: msg.content,
       message_type: msg.message_type,
       created_at: msg.created_at,
-      user: {
-        id: msg.user.id,
-        username: msg.user.username,
-        avatar: msg.user.avatar,
-      },
+      user: msg.user
+        ? {
+            id: msg.user.id,
+            username: msg.user.username,
+            avatar: msg.user.avatar,
+          }
+        : null,
     }));
   }
 }

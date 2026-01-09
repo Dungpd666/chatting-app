@@ -3,7 +3,7 @@ import {CreateUserDto} from './dto/create-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from "@nestjs/typeorm";
 import {User} from "./entities/user.entity";
-import {Repository} from "typeorm";
+import {Repository, In} from "typeorm";
 
 @Injectable()
 export class UsersService {
@@ -26,6 +26,11 @@ export class UsersService {
 
   findByEmail(email: string) {
     return this.userRepository.findOneBy({email});
+  }
+
+  async findManyByIds(ids: number[]) {
+    if (!ids || ids.length === 0) return [];
+    return this.userRepository.findBy({ id: In(ids) });
   }
 
   save(user: User) {

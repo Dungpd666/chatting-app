@@ -10,16 +10,16 @@ export class Message {
     @Column()
     conversation_id: number;
 
-    @Column()
-    user_id: number;
+    @Column({ nullable: true })
+    user_id: number | null;
 
     @ManyToOne(() => Conversation)
     @JoinColumn({ name: 'conversation_id' })
     conversation: Conversation;
 
-    @ManyToOne(() => User)
+    @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'user_id' })
-    user: User;
+    user: User | null;
 
     @Column('text')
     content: string;

@@ -1,4 +1,4 @@
-  export interface User {
+export interface User {
   id: number;
   username: string;
   email: string;
@@ -24,7 +24,14 @@ export interface Conversation {
   unreadCount?: number;
   unread_count?: number;
   otherUser?: User;
-  members?: User[];
+  members?: Array<{
+    user_id?: number;
+    id?: number;
+    username?: string;
+    email?: string;
+    avatar?: string;
+    is_admin?: boolean;
+  }>;
   participants?: User[];
 }
 
