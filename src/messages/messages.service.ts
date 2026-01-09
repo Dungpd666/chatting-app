@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, LessThan } from "typeorm";
+import { Repository } from "typeorm";
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { Message } from "./entities/message.entity";
@@ -73,7 +73,6 @@ export class MessagesService {
       .limit(limit);
 
     if (cursor) {
-      // For pagination, get messages older than cursor
       queryBuilder.andWhere('msg.id < :cursor', { cursor });
     }
 
