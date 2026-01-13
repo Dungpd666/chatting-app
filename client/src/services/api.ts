@@ -10,6 +10,7 @@ import {
 } from '../types';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3636';
+export { API_URL };
 
 const api = axios.create({
   baseURL: API_URL,
@@ -120,11 +121,30 @@ export const messagesAPI = {
 
   create: async (data: {
     conversation_id: number;
-    content: string;
+    content?: string;
     message_type: string;
+    attachment_url?: string;
+    attachment_name?: string;
+    attachment_type?: string;
+    attachment_size?: number;
   }): Promise<Message> => {
     const response = await api.post<Message>('/messages', data);
     return response.data;
+  },
+
+  upload: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/messages/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data as {
+      url: string;
+      name: string;
+      type: string;
+      size: number;
+      message_type: 'image' | 'file';
+    };
   },
 
   delete: async (id: number): Promise<void> => {

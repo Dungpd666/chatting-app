@@ -40,8 +40,12 @@ export interface Message {
   conversation_id: number;
   sender_id: number;
   user_id: number;
-  content: string;
-  message_type: string;
+  content: string | null;
+  message_type: 'text' | 'image' | 'file';
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+  attachment_type?: string | null;
+  attachment_size?: number | null;
   created_at: Date;
   sender?: User;
   user?: User;

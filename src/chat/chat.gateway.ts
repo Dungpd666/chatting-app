@@ -97,22 +97,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
 
     @SubscribeMessage('send_message')
     async handleSendMessage(
-        @MessageBody() data: { conversationId: string; content: string },
+        @MessageBody() data: { conversationId: string; content?: string; attachment_url?: string; attachment_name?: string; attachment_type?: string; attachment_size?: number },
         @ConnectedSocket() client: Socket,
     ) {
         try {
             const userId = client.data.user.sub || client.data.user.id;
-            const { conversationId, content } = data;
+            const { conversationId, content, attachment_name, attachment_type, attachment_url, attachment_size } = data;
 
-            if (!content?.trim()) {
-                client.emit('error', { message: 'Message content is required' });
+            if (!content?.trim() && !attachment_url) {
+                client.emit('error', { message: 'Message content or attachment is required' });
                 return;
             }
 
             const message = await this.chatService.createMessage({
                 conversationId,
                 senderId: userId,
-                content: content.trim(),
+                content: content?.trim() || undefined,
+                attachment_name,
+                attachment_type,
+                attachment_url,
+                attachment_size,
             });
 
             const messageData = {
@@ -121,6 +125,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
                 sender_id: message.user_id,
                 content: message.content,
                 message_type: message.message_type,
+                attachment_url: message.attachment_url,
+                attachment_name: message.attachment_name,
+                attachment_type: message.attachment_type,
+                attachment_size: message.attachment_size,
                 created_at: message.created_at,
                 sender: {
                     id: message.user.id,

@@ -19,7 +19,7 @@ export class MessagesService {
   ) {}
 
   async create(userId: number, createMessageDto: CreateMessageDto) {
-    const { conversation_id, content, message_type } = createMessageDto;
+    const { conversation_id, content, message_type, attachment_name, attachment_type, attachment_url, attachment_size } = createMessageDto;
 
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversation_id },
@@ -35,11 +35,21 @@ export class MessagesService {
       throw new ForbiddenException('You are not a member of this conversation');
     }
 
+    if (!content && !attachment_url) {
+      throw new ForbiddenException('Message content or attachment is required');
+    }
+
+    const resolvedType = attachment_url ? (attachment_type?.startsWith('image/') ? 'image' : 'file') : (message_type || 'text');
+
     const message = this.messageRepository.create({
       conversation_id,
       user_id: userId,
-      content,
-      message_type,
+      content: content || null,
+      message_type: resolvedType,
+      attachment_url: attachment_url || null,
+      attachment_name: attachment_name || null,
+      attachment_type: attachment_type || null,
+      attachment_size: attachment_size ?? null,
       created_at: new Date(),
     });
 
@@ -89,6 +99,10 @@ export class MessagesService {
         conversation_id: msg.conversation_id,
         content: msg.content,
         message_type: msg.message_type,
+        attachment_url: msg.attachment_url,
+        attachment_name: msg.attachment_name,
+        attachment_type: msg.attachment_type,
+        attachment_size: msg.attachment_size,
         created_at: msg.created_at,
         user: msg.user
           ? {
@@ -119,6 +133,10 @@ export class MessagesService {
       conversation_id: message.conversation_id,
       content: message.content,
       message_type: message.message_type,
+      attachment_url: message.attachment_url,
+      attachment_name: message.attachment_name,
+      attachment_type: message.attachment_type,
+      attachment_size: message.attachment_size,
       created_at: message.created_at,
       user: message.user
         ? {
@@ -169,6 +187,10 @@ export class MessagesService {
       conversation_id: msg.conversation_id,
       content: msg.content,
       message_type: msg.message_type,
+      attachment_url: msg.attachment_url,
+      attachment_name: msg.attachment_name,
+      attachment_type: msg.attachment_type,
+      attachment_size: msg.attachment_size,
       created_at: msg.created_at,
       user: msg.user
         ? {

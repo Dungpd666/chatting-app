@@ -67,11 +67,20 @@ class SocketService {
     }
   }
 
-  sendMessage(conversationId: number, content: string): void {
+  sendMessage(conversationId: number, content?: string, attachment?: {
+    url: string;
+    name: string;
+    type: string;
+    size: number;
+  }): void {
     if (this.socket) {
       this.socket.emit('send_message', {
         conversationId: conversationId.toString(),
         content,
+        attachment_url: attachment?.url,
+        attachment_name: attachment?.name,
+        attachment_type: attachment?.type,
+        attachment_size: attachment?.size,
       });
     }
   }

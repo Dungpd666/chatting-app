@@ -33,13 +33,25 @@ export class ChatService {
     async createMessage(data: {
         conversationId: string;
         senderId: string;
-        content: string;
+        content?: string;
+        attachment_url?: string;
+        attachment_name?: string;
+        attachment_type?: string;
+        attachment_size?: number;
     }) {
+        const messageType = data.attachment_url
+            ? (data.attachment_type?.startsWith('image/') ? 'image' : 'file')
+            : 'text';
+
         const message = this.messageRepository.create({
             conversation_id: parseInt(data.conversationId),
             user_id: parseInt(data.senderId),
-            content: data.content,
-            message_type: 'text',
+            content: data.content || null,
+            message_type: messageType,
+            attachment_url: data.attachment_url || null,
+            attachment_name: data.attachment_name || null,
+            attachment_type: data.attachment_type || null,
+            attachment_size: data.attachment_size ?? null,
             created_at: new Date(),
         });
 

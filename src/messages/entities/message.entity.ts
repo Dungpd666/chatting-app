@@ -21,11 +21,23 @@ export class Message {
     @JoinColumn({ name: 'user_id' })
     user: User | null;
 
-    @Column('text')
-    content: string;
+    @Column('text', { nullable: true })
+    content: string | null;
 
-    @Column()
+    @Column({ default: 'text' })
     message_type: string;
+
+    @Column({ nullable: true })
+    attachment_url: string | null;
+
+    @Column({ nullable: true })
+    attachment_name: string | null;
+
+    @Column({ nullable: true })
+    attachment_type: string | null;
+
+    @Column({ type: 'bigint', nullable: true })
+    attachment_size: number | null;
 
     @Column()
     created_at: Date;

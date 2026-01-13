@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import {TypeOrmModule} from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
@@ -20,6 +22,11 @@ import {ChatModule} from "./chat/chat.module";
         ConfigModule.forRoot({
             isGlobal: true,
             envFilePath: '.env',
+        }),
+        ServeStaticModule.forRoot({
+            rootPath: join(__dirname, '..', 'public', 'uploads'),
+            serveRoot: '/uploads',
+            serveStaticOptions: { index: false },
         }),
         TypeOrmModule.forRoot({
             type: 'postgres',

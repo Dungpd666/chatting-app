@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Conversation, Message } from '../types';
-import { messagesAPI, conversationsAPI, usersAPI } from '../services/api';
+import { messagesAPI, conversationsAPI, usersAPI, API_URL } from '../services/api';
 import { socketService } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import MessageInput from './MessageInput';
@@ -24,6 +24,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
   const [memberActionLoading, setMemberActionLoading] = useState(false);
   const [members, setMembers] = useState<any[]>(conversation.members || conversation.participants || []);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{ url: string; name?: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const conversationIdRef = useRef<number>(conversation.id);
@@ -237,6 +238,61 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     setMembers(conversation.members || conversation.participants || []);
   }, [conversation.id, conversation.members, conversation.participants]);
 
+  const renderMessageContent = (msg: Message, isOwn: boolean) => {
+    const toAbsolute = (url?: string | null) => {
+      if (!url) return '';
+      if (url.startsWith('http')) return url;
+      return `${API_URL}${url}`;
+    };
+    const textClass = isOwn ? 'text-gray-900' : 'text-gray-800';
+    const subTextClass = isOwn ? 'text-gray-600' : 'text-gray-700';
+
+    if (msg.message_type === 'image' && msg.attachment_url) {
+      const absUrl = toAbsolute(msg.attachment_url);
+      return (
+        <div className="space-y-2">
+          {msg.content && <p className={`${textClass} whitespace-pre-line break-words`}>{msg.content}</p>}
+          <button
+            type="button"
+            onClick={() => setImagePreview({ url: absUrl, name: msg.attachment_name || 'image' })}
+            className="focus:outline-none"
+          >
+            <img
+              src={absUrl}
+              alt={msg.attachment_name || 'image'}
+              className="max-w-[320px] w-full h-auto rounded-lg border border-gray-200 shadow-sm bg-white"
+            />
+          </button>
+        </div>
+      );
+    }
+
+    if (msg.message_type === 'file' && msg.attachment_url) {
+      const absUrl = toAbsolute(msg.attachment_url);
+      const sizeKb = msg.attachment_size ? `${Math.round(msg.attachment_size / 1024)} KB` : '';
+      return (
+        <div className="space-y-1">
+          {msg.content && <p className={`${textClass} whitespace-pre-line break-words`}>{msg.content}</p>}
+          <a
+            href={absUrl}
+            target="_blank"
+            rel="noreferrer"
+            download={msg.attachment_name || undefined}
+            className={`flex items-center space-x-2 ${isOwn ? 'text-blue-700' : 'text-blue-600'} hover:underline`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+            <span className="truncate max-w-xs">{msg.attachment_name || 'Download file'}</span>
+            <span className={`text-xs ${subTextClass}`}>{sizeKb}</span>
+          </a>
+        </div>
+      );
+    }
+
+    return <p className={`${textClass} whitespace-pre-line break-words`}>{msg.content}</p>;
+  };
+
   return (
     <div className="flex-1 flex flex-row bg-gray-50 h-screen">
       <div className="flex-1 flex flex-col">
@@ -399,10 +455,10 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
                       )}
                       <div>
                         <div
-                          className={`px-4 py-2 rounded-2xl ${
+                          className={`px-4 py-3 rounded-2xl ${
                             isOwnMessage
-                              ? 'bg-blue-600 text-white rounded-br-sm'
-                              : 'bg-white text-gray-800 rounded-bl-sm shadow-sm'
+                              ? 'bg-blue-50 text-gray-900 border border-blue-200 shadow-sm'
+                              : 'bg-white text-gray-900 border border-gray-200 shadow-sm'
                           }`}
                         >
                           {!isOwnMessage && (
@@ -410,7 +466,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
                               {sender?.username || 'Unknown'}
                             </p>
                           )}
-                          <p className="break-words">{message.content}</p>                        </div>
+
+                          {renderMessageContent(message, isOwnMessage)}
+                        </div>
                         <p className={`text-xs text-gray-500 mt-1 ${isOwnMessage ? 'text-right' : 'text-left'}`}>
                           {formatTime(message.created_at)}
                         </p>
@@ -695,6 +753,21 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
                 Add selected
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {imagePreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={() => setImagePreview(null)}>
+          <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="absolute top-2 right-2 bg-white rounded-full p-2 shadow hover:bg-gray-100"
+              onClick={() => setImagePreview(null)}
+            >
+              ✕
+            </button>
+            <img src={imagePreview.url} alt={imagePreview.name} className="max-h-[85vh] max-w-full rounded" />
+            <div className="text-center text-white mt-2 truncate px-4">{imagePreview.name}</div>
           </div>
         </div>
       )}
