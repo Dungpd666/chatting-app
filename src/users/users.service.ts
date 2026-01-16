@@ -29,7 +29,6 @@ export class UsersService {
       throw new BadRequestException('User not found');
     }
 
-    // Delete old avatar file if exists
     if (user.avatar) {
       const oldAvatarPath = `public${user.avatar}`;
       if (fs.existsSync(oldAvatarPath)) {
