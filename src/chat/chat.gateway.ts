@@ -104,6 +104,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
             const userId = client.data.user.sub || client.data.user.id;
             const { conversationId, content, attachment_name, attachment_type, attachment_url, attachment_size } = data;
 
+            const hasAccess = await this.chatService.checkUserInConversation(userId, conversationId);
+            if (!hasAccess) {
+                client.emit('error', { message: 'You are not a member of this conversation' });
+                // Leave the room if user was kicked
+                client.leave(`conversation_${conversationId}`);
+                return;
+            }
+
             if (!content?.trim() && !attachment_url) {
                 client.emit('error', { message: 'Message content or attachment is required' });
                 return;
@@ -163,6 +171,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
             const userId = client.data.user.sub || client.data.user.id;
             const { conversationId } = data;
 
+            // Check if user is still a member
+            const hasAccess = await this.chatService.checkUserInConversation(userId, conversationId);
+            if (!hasAccess) {
+                return;
+            }
+
             await this.chatService.markAsRead(userId, conversationId);
 
             client.to(`conversation_${conversationId}`).emit('user_read', {
@@ -183,6 +197,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect{
         const userId = client.data.user.sub || client.data.user.id;
         const { conversationId, isTyping } = data;
         const convId = parseInt(conversationId, 10);
+
+        // Check if user is still a member
+        const hasAccess = await this.chatService.checkUserInConversation(userId, conversationId);
+        if (!hasAccess) {
+            client.leave(`conversation_${conversationId}`);
+            return;
+        }
 
         client.to(`conversation_${conversationId}`).emit('user_typing', {
             userId,

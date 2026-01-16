@@ -275,26 +275,39 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     if (msg.message_type === 'file' && msg.attachment_url) {
       const absUrl = toAbsolute(msg.attachment_url);
       const sizeKb = msg.attachment_size ? `${Math.round(msg.attachment_size / 1024)} KB` : '';
+      // Extract filename from URL for download endpoint
+      const filename = msg.attachment_url.split('/').pop() || '';
+      const downloadUrl = `${API_URL}/messages/download/${filename}?name=${encodeURIComponent(msg.attachment_name || filename)}`;
+
       return (
         <div>
           {msg.content && <p className={`${textClass} whitespace-pre-line break-words text-sm mb-2`}>{msg.content}</p>}
-          <a
-            href={absUrl}
-            target="_blank"
-            rel="noreferrer"
-            download={msg.attachment_name || undefined}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl bg-black/10 hover:bg-black/20 transition-colors ${textClass}`}
-          >
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOwn ? 'bg-black/10' : 'bg-tg-accent/15'}`}>
-              <svg className={`w-4 h-4 ${isOwn ? 'text-tg-bubbleOutText' : 'text-tg-accent'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${isOwn ? 'bg-black/10' : 'bg-tg-panel2'}`}>
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${isOwn ? 'bg-black/10' : 'bg-tg-accent/15'}`}>
+              <svg className={`w-5 h-5 ${isOwn ? 'text-tg-bubbleOutText' : 'text-tg-accent'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate max-w-[180px]">{msg.attachment_name || 'Download file'}</p>
+              <p className={`text-sm font-medium truncate max-w-[160px] ${textClass}`}>{msg.attachment_name || 'File'}</p>
               <p className={`text-xs ${isOwn ? 'opacity-60' : 'text-tg-muted'}`}>{sizeKb}</p>
             </div>
-          </a>
+            <a
+              href={downloadUrl}
+              download={msg.attachment_name || filename}
+              onClick={(e) => e.stopPropagation()}
+              className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                isOwn 
+                  ? 'hover:bg-black/20 text-tg-bubbleOutText' 
+                  : 'hover:bg-tg-accent/20 text-tg-accent'
+              }`}
+              title="Download file"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </a>
+          </div>
         </div>
       );
     }
