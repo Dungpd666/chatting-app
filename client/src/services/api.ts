@@ -188,6 +188,20 @@ export const usersAPI = {
     const response = await api.put<User>('/users/profile', data);
     return response.data;
   },
+
+  uploadAvatar: async (file: File): Promise<{ message: string; avatar: string; user: User }> => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await api.post('/users/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  deleteAvatar: async (): Promise<{ message: string; user: User }> => {
+    const response = await api.delete('/users/avatar');
+    return response.data;
+  },
 };
 
 export default api;

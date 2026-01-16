@@ -22,6 +22,40 @@ export class ConversationsService {
     private usersService: UsersService,
   ) {}
 
+  /**
+   * Get display name for a conversation based on current user
+   * - Direct chat: Returns the other participant's username
+   * - Group chat: Returns the conversation name from DB
+   */
+  private getDisplayName(
+    conversation: Conversation,
+    members: Array<{ user_id: number; username?: string; avatar?: string }>,
+    currentUserId: number,
+  ): string {
+    if (conversation.type === 'direct') {
+      const otherMember = members.find(m => m.user_id !== currentUserId);
+      return otherMember?.username || 'Unknown User';
+    }
+    return conversation.name || 'Unnamed Group';
+  }
+
+  /**
+   * Get avatar for a conversation based on current user
+   * - Direct chat: Returns the other participant's avatar
+   * - Group chat: Returns null (no single avatar)
+   */
+  private getDisplayAvatar(
+    conversation: Conversation,
+    members: Array<{ user_id: number; avatar?: string }>,
+    currentUserId: number,
+  ): string | null {
+    if (conversation.type === 'direct') {
+      const otherMember = members.find(m => m.user_id !== currentUserId);
+      return otherMember?.avatar || null;
+    }
+    return null;
+  }
+
   async create(userId: number, createConversationDto: CreateConversationDto) {
     let { type, name, participant_id, participant_ids, user_ids } = createConversationDto;
 
@@ -55,14 +89,13 @@ export class ConversationsService {
       }
 
       const participant = await this.usersService.findOne(participant_id);
-      const currentUser = await this.usersService.findOne(userId);
       if (!participant) {
         throw new NotFoundException('Participant not found');
       }
 
       const conversation = this.conversationRepository.create({
         type: 'direct',
-        name: `${currentUser.username} & ${participant.username}`,
+        name: null,
         created_at: new Date(),
       });
 
@@ -167,15 +200,19 @@ export class ConversationsService {
             }
           : null;
 
+        const membersList = members.map(m => ({
+          user_id: m.user_id,
+          username: m.user?.username,
+          email: m.user?.email,
+          avatar: m.user?.avatar,
+          is_admin: m.is_admin,
+        }));
+
         return {
           ...conv,
-          members: members.map(m => ({
-            user_id: m.user_id,
-            username: m.user?.username,
-            email: m.user?.email,
-            avatar: m.user?.avatar,
-            is_admin: m.is_admin,
-          })),
+          display_name: this.getDisplayName(conv, membersList, userId),
+          display_avatar: this.getDisplayAvatar(conv, membersList, userId),
+          members: membersList,
           unread_count: unreadCount,
           last_message: lastMessage,
         };
@@ -206,16 +243,20 @@ export class ConversationsService {
       .where('cm.conversation_id = :convId', { convId: id })
       .getMany();
 
+    const membersList = members.map(m => ({
+      user_id: m.user_id,
+      username: m.user?.username,
+      email: m.user?.email,
+      avatar: m.user?.avatar,
+      joined_at: m.joined_at,
+      is_admin: m.is_admin,
+    }));
+
     return {
       ...conversation,
-      members: members.map(m => ({
-        user_id: m.user_id,
-        username: m.user?.username,
-        email: m.user?.email,
-        avatar: m.user?.avatar,
-        joined_at: m.joined_at,
-        is_admin: m.is_admin,
-      })),
+      display_name: this.getDisplayName(conversation, membersList, userId),
+      display_avatar: this.getDisplayAvatar(conversation, membersList, userId),
+      members: membersList,
     };
   }
 

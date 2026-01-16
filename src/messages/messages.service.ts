@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -6,6 +6,14 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { Message } from "./entities/message.entity";
 import { Conversation } from "../conversations/entities/conversation.entity";
 import { ConversationMember } from "../conversation_members/entities/conversation_member.entity";
+
+export interface FileUploadResult {
+  url: string;
+  name: string;
+  type: string;
+  size: number;
+  message_type: 'image' | 'file';
+}
 
 @Injectable()
 export class MessagesService {
@@ -17,6 +25,20 @@ export class MessagesService {
     @InjectRepository(ConversationMember)
     private conversationMemberRepository: Repository<ConversationMember>,
   ) {}
+
+  processUploadedFile(file: Express.Multer.File): FileUploadResult {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    return {
+      url: `/uploads/messages/${file.filename}`,
+      name: file.originalname,
+      type: file.mimetype,
+      size: file.size,
+      message_type: file.mimetype.startsWith('image/') ? 'image' : 'file',
+    };
+  }
 
   async create(userId: number, createMessageDto: CreateMessageDto) {
     const { conversation_id, content, message_type, attachment_name, attachment_type, attachment_url, attachment_size } = createMessageDto;

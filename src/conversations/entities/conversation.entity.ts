@@ -8,7 +8,7 @@ export class Conversation {
     @Column()
     type: string;
 
-    @Column()
+    @Column({ nullable: true })
     name: string;
 
     @Column({ nullable: true })

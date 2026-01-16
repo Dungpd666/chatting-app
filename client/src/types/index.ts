@@ -10,6 +10,8 @@ export interface Conversation {
   id: number;
   type: string;
   name: string;
+  display_name?: string;
+  display_avatar?: string | null;
   last_message_at?: Date;
   created_at: Date;
   lastMessage?: Message;

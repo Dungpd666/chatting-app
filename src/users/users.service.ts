@@ -1,9 +1,16 @@
-import {Injectable} from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import {CreateUserDto} from './dto/create-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from "@nestjs/typeorm";
 import {User} from "./entities/user.entity";
 import {Repository, In} from "typeorm";
+import * as fs from 'fs';
+
+export interface AvatarUploadResult {
+  message: string;
+  avatar: string;
+  user: Omit<User, 'password'>;
+}
 
 @Injectable()
 export class UsersService {
@@ -11,6 +18,59 @@ export class UsersService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
   ) {}
+
+  async processAvatarUpload(userId: number, file: Express.Multer.File): Promise<AvatarUploadResult> {
+    if (!file) {
+      throw new BadRequestException('Avatar file is required');
+    }
+
+    const user = await this.findOne(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Delete old avatar file if exists
+    if (user.avatar) {
+      const oldAvatarPath = `public${user.avatar}`;
+      if (fs.existsSync(oldAvatarPath)) {
+        fs.unlinkSync(oldAvatarPath);
+      }
+    }
+
+
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    user.avatar = avatarUrl;
+    const updatedUser = await this.save(user);
+
+    const { password, ...result } = updatedUser;
+    return {
+      message: 'Avatar uploaded successfully',
+      avatar: avatarUrl,
+      user: result as Omit<User, 'password'>,
+    };
+  }
+
+  async deleteUserAvatar(userId: number): Promise<{ message: string; user: Omit<User, 'password'> }> {
+    const user = await this.findOne(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (user.avatar) {
+      const avatarPath = `public${user.avatar}`;
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+      user.avatar = null;
+      await this.save(user);
+    }
+
+    const { password, ...result } = user;
+    return {
+      message: 'Avatar deleted successfully',
+      user: result as Omit<User, 'password'>,
+    };
+  }
 
   create(createUserDto: CreateUserDto) {
     return this.userRepository.create(createUserDto);

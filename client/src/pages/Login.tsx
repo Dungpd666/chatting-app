@@ -27,22 +27,40 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-tg-bg p-4">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-tg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-tg-accent/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="tg-card p-8 w-full max-w-md animate-fade-in-up relative">
+        {/* Logo/Icon */}
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-tg-accent/20 rounded-2xl flex items-center justify-center">
+            <svg className="w-8 h-8 text-tg-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+        </div>
+
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to continue chatting</p>
+          <h1 className="text-2xl font-bold text-tg-text mb-2">Welcome Back</h1>
+          <p className="text-tg-muted">Sign in to continue chatting</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">
-            {error}
+          <div className="bg-tg-danger/10 border border-tg-danger/20 text-tg-danger p-4 rounded-xl mb-6 text-sm animate-fade-in flex items-center gap-3">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="tg-form-group">
+            <label htmlFor="email" className="tg-label">
               Email
             </label>
             <input
@@ -50,14 +68,15 @@ const Login: React.FC = () => {
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              className="tg-input"
               placeholder="your@email.com"
               required
+              autoComplete="email"
             />
           </div>
 
-          <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="tg-form-group">
+            <label htmlFor="password" className="tg-label">
               Password
             </label>
             <input
@@ -65,25 +84,36 @@ const Login: React.FC = () => {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              className="tg-input"
               placeholder="••••••••"
               required
+              autoComplete="current-password"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="tg-btn-primary w-full mt-2"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? (
+              <>
+                <span className="tg-spinner" />
+                <span>Signing in...</span>
+              </>
+            ) : (
+              'Sign In'
+            )}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-gray-600">
+        <div className="mt-8 text-center">
+          <p className="text-tg-muted">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+            <Link
+              to="/register"
+              className="text-tg-accent hover:text-tg-accentHover font-medium transition-colors"
+            >
               Sign up
             </Link>
           </p>

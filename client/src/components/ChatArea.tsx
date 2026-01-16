@@ -22,6 +22,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
   const [addUserIds, setAddUserIds] = useState<number[]>([]);
   const [memberActionLoading, setMemberActionLoading] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
   const [members, setMembers] = useState<any[]>(conversation.members || conversation.participants || []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ url: string; name?: string } | null>(null);
@@ -38,42 +39,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     conversationIdRef.current = conversation.id;
   }, [conversation.id]);
 
-  // Get members list for display
-  const membersList = React.useMemo(() => {
-    const list = members.length > 0 ? members : conversation.participants || [];
-
-    if (list.length > 0) {
-      // Ensure each member has a proper ID
-      return list.map((member: any, idx: number) => ({
-        ...member,
-        id: member.id || member.user_id || `member-${idx}`,
-      }));
-    }
-
-    // Fallback for direct messages
-    const fallbackMembers = [];
-    if (conversation.otherUser) {
-      fallbackMembers.push({
-        id: `other-${conversation.otherUser.id || 'unknown'}`,
-        actualId: conversation.otherUser.id,
-        username: conversation.otherUser.username,
-        email: conversation.otherUser.email,
-        isCurrentUser: false,
-        colorClass: 'from-green-400 to-green-600'
-      });
-    }
-    if (user) {
-      fallbackMembers.push({
-        id: `current-${user.id || 'me'}`,
-        actualId: user.id,
-        username: user.username,
-        email: user.email,
-        isCurrentUser: true,
-        colorClass: 'from-blue-400 to-blue-600'
-      });
-    }
-    return fallbackMembers;
-  }, [members, conversation, user]);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -223,8 +188,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     const messageElement = document.getElementById(`message-${messageId}`);
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      messageElement.classList.add('bg-yellow-100');
-      setTimeout(() => messageElement.classList.remove('bg-yellow-100'), 2000);
+      // Add highlight effect with CSS class
+      messageElement.classList.add('tg-message-highlight');
+      setTimeout(() => {
+        messageElement.classList.remove('tg-message-highlight');
+      }, 2000);
     }
   };
 
@@ -238,29 +206,66 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
     setMembers(conversation.members || conversation.participants || []);
   }, [conversation.id, conversation.members, conversation.participants]);
 
+  // Helper to get full avatar URL
+  const getAvatarUrl = (avatar?: string | null): string | undefined => {
+    if (!avatar) return undefined;
+    if (avatar.startsWith('http')) return avatar;
+    return `${API_URL}${avatar}`;
+  };
+
+  const handleRemoveMember = async (memberId: number) => {
+    if (!isGroup) return;
+    if (!window.confirm('Remove this member from the group?')) return;
+    setRemovingMemberId(memberId);
+    try {
+      await conversationsAPI.removeMember(conversation.id, memberId);
+      setMembers(prev => prev.filter(m => (m.user_id ?? m.id) !== memberId));
+    } catch (err) {
+      console.error('Failed to remove member', err);
+      alert('Cannot remove member: ' + ((err as any)?.response?.data?.message || 'Error'));
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!user?.id || !isGroup) return;
+    if (!window.confirm('Leave this group?')) return;
+    setRemovingMemberId(user.id);
+    try {
+      await conversationsAPI.removeMember(conversation.id, user.id);
+      setMembers(prev => prev.filter(m => (m.user_id ?? m.id) !== user.id));
+      setShowInfo(false);
+    } catch (err) {
+      console.error('Failed to leave group', err);
+      alert('Cannot leave group: ' + ((err as any)?.response?.data?.message || 'Error'));
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
   const renderMessageContent = (msg: Message, isOwn: boolean) => {
     const toAbsolute = (url?: string | null) => {
       if (!url) return '';
       if (url.startsWith('http')) return url;
       return `${API_URL}${url}`;
     };
-    const textClass = isOwn ? 'text-gray-900' : 'text-gray-800';
-    const subTextClass = isOwn ? 'text-gray-600' : 'text-gray-700';
+    const textClass = isOwn ? 'text-tg-bubbleOutText' : 'text-tg-text';
 
     if (msg.message_type === 'image' && msg.attachment_url) {
       const absUrl = toAbsolute(msg.attachment_url);
       return (
-        <div className="space-y-2">
-          {msg.content && <p className={`${textClass} whitespace-pre-line break-words`}>{msg.content}</p>}
+        <div>
+          {msg.content && <p className={`${textClass} whitespace-pre-line break-words text-sm mb-2`}>{msg.content}</p>}
           <button
             type="button"
             onClick={() => setImagePreview({ url: absUrl, name: msg.attachment_name || 'image' })}
-            className="focus:outline-none"
+            className="focus:outline-none block"
           >
             <img
               src={absUrl}
               alt={msg.attachment_name || 'image'}
-              className="max-w-[320px] w-full h-auto rounded-lg border border-gray-200 shadow-sm bg-white"
+              className="max-w-[280px] w-auto h-auto rounded-xl border border-tg-border/50"
             />
           </button>
         </div>
@@ -271,451 +276,525 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
       const absUrl = toAbsolute(msg.attachment_url);
       const sizeKb = msg.attachment_size ? `${Math.round(msg.attachment_size / 1024)} KB` : '';
       return (
-        <div className="space-y-1">
-          {msg.content && <p className={`${textClass} whitespace-pre-line break-words`}>{msg.content}</p>}
+        <div>
+          {msg.content && <p className={`${textClass} whitespace-pre-line break-words text-sm mb-2`}>{msg.content}</p>}
           <a
             href={absUrl}
             target="_blank"
             rel="noreferrer"
             download={msg.attachment_name || undefined}
-            className={`flex items-center space-x-2 ${isOwn ? 'text-blue-700' : 'text-blue-600'} hover:underline`}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl bg-black/10 hover:bg-black/20 transition-colors ${textClass}`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
-            <span className="truncate max-w-xs">{msg.attachment_name || 'Download file'}</span>
-            <span className={`text-xs ${subTextClass}`}>{sizeKb}</span>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOwn ? 'bg-black/10' : 'bg-tg-accent/15'}`}>
+              <svg className={`w-4 h-4 ${isOwn ? 'text-tg-bubbleOutText' : 'text-tg-accent'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate max-w-[180px]">{msg.attachment_name || 'Download file'}</p>
+              <p className={`text-xs ${isOwn ? 'opacity-60' : 'text-tg-muted'}`}>{sizeKb}</p>
+            </div>
           </a>
         </div>
       );
     }
 
-    return <p className={`${textClass} whitespace-pre-line break-words`}>{msg.content}</p>;
+    return <p className={`${textClass} whitespace-pre-line break-words text-sm`}>{msg.content}</p>;
   };
 
   return (
-    <div className="flex-1 flex flex-row bg-gray-50 h-screen">
-      <div className="flex-1 flex flex-col">
-      {/* Chat Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-              {conversation.name?.charAt(0).toUpperCase() || 'C'}
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-800">{conversation.name || 'Conversation'}</h2>
-              <p className="text-xs text-gray-500">
-                {typingUsers.length > 0 ? 'Typing...' : 'Online'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handleSearchToggle}
-              className={`p-2 transition ${showSearch ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setShowInfo(!showInfo)}
-              className="p-2 text-gray-500 hover:text-gray-700 transition"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
+    <>
+      <section className="flex-1 flex min-h-0 h-full">
+        <div className="flex w-full h-full">
+          <div className="flex-1 flex flex-col min-h-0 h-full">
+            {/* Chat Header */}
+            <div className="flex-shrink-0 bg-tg-panel border-b border-tg-border">
+              <div className="px-4 py-3 flex items-center justify-between w-full">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="tg-avatar tg-avatar-md overflow-hidden">
+                    {conversation.display_avatar ? (
+                      <img
+                        src={conversation.display_avatar.startsWith('http') ? conversation.display_avatar : `${API_URL}${conversation.display_avatar}`}
+                        alt={conversation.display_name || conversation.name || 'Chat'}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      (conversation.display_name || conversation.name || 'C').charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="font-semibold text-tg-text truncate">{conversation.display_name || conversation.name || 'Conversation'}</h2>
+                    <p className="text-xs text-tg-muted truncate flex items-center gap-1">
+                      {typingUsers.length > 0 ? (
+                        <span className="text-tg-accent flex items-center gap-1">
+                          <span className="flex gap-0.5">
+                            {[0, 150, 300].map((delay) => (
+                              <span
+                                key={delay}
+                                className="w-1 h-1 bg-tg-accent rounded-full animate-bounce"
+                                style={{ animationDelay: `${delay}ms` }}
+                              />
+                            ))}
+                          </span>
+                          Typing…
+                        </span>
+                      ) : isGroup ? (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                          {members.length} member{members.length !== 1 ? 's' : ''}
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-1.5 h-1.5 bg-tg-success rounded-full" />
+                          Online
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
 
-        {/* Search Bar */}
-        {showSearch && (
-          <div className="px-4 pb-3">
-            <div className="relative">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Search messages..."
-                className="w-full px-4 py-2 pl-10 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              {searchQuery && (
-                <button
-                  onClick={() => handleSearch('')}
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={handleSearchToggle}
+                    className={`tg-icon-btn ${showSearch ? 'text-tg-accent bg-tg-accent/10' : ''}`}
+                    title="Search"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </button>
+                  {/* Only show info button for group chats */}
+                  {isGroup && (
+                    <button
+                      onClick={() => setShowInfo(!showInfo)}
+                      className={`tg-icon-btn ${showInfo ? 'text-tg-accent bg-tg-accent/10' : ''}`}
+                      title="Conversation info"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              {showSearch && (
+                <div className="px-4 pb-3 animate-fade-in-down">
+                  <div className="relative">
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      placeholder="Search messages…"
+                      className="tg-input py-2.5 pl-10 pr-10 text-sm"
+                    />
+                    <svg className="w-4 h-4 text-tg-muted absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => handleSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-tg-muted hover:text-tg-text transition-colors"
+                        title="Clear"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-2 text-xs text-tg-muted flex items-center gap-2">
+                    {searchLoading ? (
+                      <>
+                        <span className="tg-spinner w-3 h-3" />
+                        <span>Searching…</span>
+                      </>
+                    ) : searchQuery ? (
+                      <span>{searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found</span>
+                    ) : (
+                      <span>Type to search in this chat</span>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
-            {searchLoading && (
-              <p className="text-sm text-gray-500 mt-2">Searching...</p>
-            )}
-            {searchQuery && !searchLoading && (
-              <p className="text-sm text-gray-500 mt-2">
-                {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
-              </p>
-            )}
-          </div>
-        )}
-      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-gray-400">Loading messages...</div>
-          </div>
-        ) : showSearch && searchQuery ? (
-          searchResults.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-gray-400 text-center">
-                No messages found for "{searchQuery}"
-              </div>
-            </div>
-          ) : (
-            <>
-              {searchResults.map((message) => {
-                const sender = message.sender || message.user;
-
-                return (
-                  <div
-                    key={message.id}
-                    onClick={() => {
-                      setShowSearch(false);
-                      setSearchQuery('');
-                      setTimeout(() => scrollToMessage(message.id), 100);
-                    }}
-                    className="cursor-pointer hover:bg-gray-100 p-3 rounded-lg transition"
-                  >
-                    <div className="flex items-start space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-                        {sender?.username?.charAt(0).toUpperCase() || 'U'}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline space-x-2">
-                          <p className="font-medium text-gray-900 text-sm">
-                            {sender?.username || 'Unknown'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {formatTime(message.created_at)}
-                          </p>
+            {/* Messages */}
+            <div className="flex-1 min-h-0 flex flex-col bg-tg-bg overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+                <div className="w-full space-y-2">
+                  {loading ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 py-20">
+                      <div className="tg-spinner w-8 h-8" />
+                      <p className="text-tg-muted text-sm">Loading messages…</p>
+                    </div>
+                  ) : showSearch && searchQuery ? (
+                    searchResults.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-20">
+                        <div className="w-16 h-16 bg-tg-panel2 rounded-2xl flex items-center justify-center mb-4">
+                          <svg className="w-8 h-8 text-tg-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
                         </div>
-                        <p className="text-sm text-gray-700 mt-1 break-words">
-                          {message.content}
+                        <p className="text-tg-muted text-center text-sm">
+                          No messages found for "{searchQuery}"
                         </p>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )
-        ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-gray-400 text-center">
-              No messages yet.<br />
-              <span className="text-sm">Start the conversation!</span>
-            </div>
-          </div>
-        ) : (
-          <>
-            {messages.map((message, index) => {
-              const previousMessage = index > 0 ? messages[index - 1] : null;
-              const showDateSeparator = shouldShowDateSeparator(message, previousMessage);
-              // Check sender_id, user_id, or user.id for compatibility
-              const messageSenderId = message.sender_id || message.user_id || message.user?.id;
-              const isOwnMessage = messageSenderId === user?.id;
-              const sender = message.sender || message.user;
+                    ) : (
+                      <>
+                        {searchResults.map((message) => {
+                          const sender = message.sender || message.user;
+                          const senderAvatarUrl = getAvatarUrl(sender?.avatar);
 
-              return (
-                <React.Fragment key={message.id}>
-                  {showDateSeparator && (
-                    <div className="flex items-center justify-center my-4">
-                      <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                        {formatDate(message.created_at)}
+                          return (
+                            <div
+                              key={message.id}
+                              onClick={() => {
+                                setShowSearch(false);
+                                setSearchQuery('');
+                                setTimeout(() => scrollToMessage(message.id), 100);
+                              }}
+                              className="cursor-pointer hover:bg-tg-panel2 p-3 rounded-2xl transition border border-transparent hover:border-tg-border"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="tg-avatar tg-avatar-sm flex-shrink-0 overflow-hidden">
+                                  {senderAvatarUrl ? (
+                                    <img src={senderAvatarUrl} alt={sender?.username || 'User'} className="w-full h-full object-cover" />
+                                  ) : (
+                                    sender?.username?.charAt(0).toUpperCase() || 'U'
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-baseline gap-2">
+                                    <p className="font-medium text-tg-text text-sm truncate">
+                                      {sender?.username || 'Unknown'}
+                                    </p>
+                                    <p className="text-xs text-tg-muted flex-shrink-0">
+                                      {formatTime(message.created_at)}
+                                    </p>
+                                  </div>
+                                  <p className="text-sm text-tg-muted mt-1 break-words">
+                                    {message.content}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )
+                  ) : messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                      <div className="w-20 h-20 bg-tg-panel2 rounded-2xl flex items-center justify-center mb-4">
+                        <svg className="w-10 h-10 text-tg-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                      </div>
+                      <p className="text-tg-muted text-center text-sm mb-1">No messages yet</p>
+                      <p className="text-tg-muted/60 text-center text-xs">Start the conversation!</p>
+                    </div>
+                  ) : (
+                    <>
+                      {messages.map((message, index) => {
+                        const previousMessage = index > 0 ? messages[index - 1] : null;
+                        const showDateSeparator = shouldShowDateSeparator(message, previousMessage);
+                        const messageSenderId = message.sender_id || message.user_id || message.user?.id;
+                        const isOwnMessage = messageSenderId === user?.id;
+                        const sender = message.sender || message.user;
+
+                        return (
+                          <React.Fragment key={message.id}>
+                            {showDateSeparator && (
+                              <div className="flex items-center justify-center my-4">
+                                <div className="tg-chip text-xs text-tg-muted">
+                                  {formatDate(message.created_at)}
+                                </div>
+                              </div>
+                            )}
+
+                            <div
+                              id={`message-${message.id}`}
+                              className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                            >
+                              <div className={`flex items-end gap-2 max-w-[70%] ${isOwnMessage ? 'flex-row-reverse' : ''}`}>
+                                {!isOwnMessage && (
+                                  <div className="tg-avatar tg-avatar-sm flex-shrink-0 self-end overflow-hidden">
+                                    {sender?.avatar ? (
+                                      <img
+                                        src={getAvatarUrl(sender.avatar)}
+                                        alt={sender.username || 'User'}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      sender?.username?.charAt(0).toUpperCase() || 'U'
+                                    )}
+                                  </div>
+                                )}
+                                <div>
+                                  <div
+                                    className={`tg-bubble ${
+                                      isOwnMessage
+                                        ? 'tg-bubble-out'
+                                        : 'tg-bubble-in'
+                                    }`}
+                                  >
+                                    {!isOwnMessage && (
+                                      <p className="text-xs font-semibold mb-0.5 text-tg-accent">
+                                        {sender?.username || 'Unknown'}
+                                      </p>
+                                    )}
+
+                                    <div>
+                                      {renderMessageContent(message, isOwnMessage)}
+                                      <div className={`flex justify-end text-[10px] mt-1 ${isOwnMessage ? 'text-tg-bubbleOutText opacity-60' : 'text-tg-muted'}`}>
+                                        {formatTime(message.created_at)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {typingUsers.length > 0 && (
+                    <div className="flex justify-start animate-fade-in">
+                      <div className="flex items-end gap-2">
+                        {typingUsers.slice(0, 3).map((id) => {
+                          const member = (conversation.members || []).find(m => (m as any).user_id === id || (m as any).id === id);
+                          const initial = member?.username?.charAt(0).toUpperCase() || '?';
+                          const avatarUrl = getAvatarUrl(member?.avatar);
+                          return (
+                            <div key={id} className="tg-avatar tg-avatar-sm overflow-hidden">
+                              {avatarUrl ? (
+                                <img src={avatarUrl} alt={member?.username || 'User'} className="w-full h-full object-cover" />
+                              ) : (
+                                initial
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div className="tg-bubble tg-bubble-in flex items-center gap-1 px-4">
+                          {[0, 150, 300].map((delay) => (
+                            <div key={delay} className="w-2 h-2 bg-tg-accent rounded-full animate-bounce" style={{ animationDelay: `${delay}ms` }} />
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  <div id={`message-${message.id}`} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} transition-colors duration-500`}>
-                    <div className={`flex items-end space-x-2 max-w-lg ${isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                      {!isOwnMessage && (
-                        <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-                          {sender?.username?.charAt(0).toUpperCase() || 'U'}
-                        </div>
-                      )}
-                      <div>
-                        <div
-                          className={`px-4 py-3 rounded-2xl ${
-                            isOwnMessage
-                              ? 'bg-blue-50 text-gray-900 border border-blue-200 shadow-sm'
-                              : 'bg-white text-gray-900 border border-gray-200 shadow-sm'
-                          }`}
-                        >
-                          {!isOwnMessage && (
-                            <p className="text-xs font-semibold mb-1 text-gray-600">
-                              {sender?.username || 'Unknown'}
-                            </p>
-                          )}
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
 
-                          {renderMessageContent(message, isOwnMessage)}
-                        </div>
-                        <p className={`text-xs text-gray-500 mt-1 ${isOwnMessage ? 'text-right' : 'text-left'}`}>
-                          {formatTime(message.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </React.Fragment>
-              );
-            })}
-          </>
-        )}
-        {typingUsers.length > 0 && (
-          <div className="flex justify-start">
-            <div className="flex items-end space-x-2">
-              {typingUsers.slice(0, 3).map((id) => {
-                const member = (conversation.members || []).find(m => (m as any).user_id === id || (m as any).id === id);
-                const initial = member?.username?.charAt(0).toUpperCase() || '?';
-                const avatar = member?.avatar;
-                return (
-                  <div
-                    key={id}
-                    className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center text-sm font-semibold text-gray-700 border border-gray-100 shadow-sm"
-                  >
-                    {avatar ? (
-                      <img src={avatar} alt={member?.username || 'User'} className="w-full h-full object-cover" />
-                    ) : (
-                      initial
-                    )}
-                  </div>
-                );
-              })}
-              <div className="bg-white px-3 py-2 rounded-2xl shadow-sm flex items-center space-x-1 border border-gray-100">
-                {[0, 150, 300].map((delay) => (
-                  <div key={delay} className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: `${delay}ms` }}></div>
-                ))}
+              {/* Message Input at bottom */}
+              <div className="flex-shrink-0 px-4 pb-3 pt-2">
+                <MessageInput conversationId={conversation.id} onMessageSent={onMessageSent} />
               </div>
             </div>
           </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Message Input */}
-      <MessageInput conversationId={conversation.id} onMessageSent={onMessageSent} />
-      </div>
-
-      {/* Info Panel */}
-      <div
-        className={`h-full bg-white border-l border-gray-200 shadow-lg transition-all duration-300 ease-in-out overflow-hidden ${
-          showInfo ? 'w-80' : 'w-0'
-        }`}
-      >
-        <div className="h-full w-80 overflow-y-auto">
-          {/* Panel Header */}
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
-            <h3 className="font-semibold text-gray-800">Conversation Info</h3>
-            <button
-              onClick={() => setShowInfo(false)}
-              className="p-1 text-gray-500 hover:text-gray-700 transition"
+          {/* Info Panel - Only for group chats */}
+          {isGroup && (
+            <aside
+               className={`h-full bg-tg-panel border-l border-tg-border shadow-tg-lg transition-all duration-300 ease-out overflow-hidden flex-shrink-0 ${
+                 showInfo ? 'w-80' : 'w-0'
+               }`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+              <div className="h-full w-80 overflow-y-auto animate-slide-in-right">
+                {/* Panel Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-tg-border">
+                  <h3 className="font-semibold text-tg-text">Group Info</h3>
+                  <button
+                    onClick={() => setShowInfo(false)}
+                    className="tg-icon-btn"
+                    title="Close"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
 
-          {/* Conversation Details */}
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-3xl mb-3">
-                {conversation.name?.charAt(0).toUpperCase() || 'C'}
-              </div>
-              <h2 className="font-semibold text-gray-800 text-lg mb-1">
-                {conversation.name || 'Conversation'}
-              </h2>
-              <p className="text-sm text-gray-600">
-                {conversation.type === 'group' ? 'Group Chat' : 'Direct Message'}
-              </p>
-            </div>
-          </div>
+                {/* Panel Content - Group Members */}
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="tg-section-title">Members</div>
+                    <span className="tg-badge tg-badge-muted">{members.length}</span>
+                  </div>
 
-          {/* Members Section */}
-          <div className="p-4 border-b border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
-              <span className="flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                Members {(() => {
-                  const allMembers = conversation.members || conversation.participants || [];
-                  const totalMembers = allMembers.length > 0 ? allMembers.length : (conversation.otherUser ? 2 : 1);
-                  return `(${totalMembers})`;
-                })()}
-              </span>
-              {isGroup && currentUserIsAdmin && (
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="text-xs text-blue-600 hover:text-blue-700"
-                >
-                  Add
-                </button>
-              )}
-            </h4>
-            <div className="space-y-3">
-              {membersList.map((member: any, index: number) => {
-                const memberId = member.actualId || member.id;
-                const isCurrentUser = member.isCurrentUser ?? (memberId === user?.id);
-                const colors = [
-                  'from-blue-400 to-blue-600',
-                  'from-green-400 to-green-600',
-                  'from-purple-400 to-purple-600',
-                  'from-pink-400 to-pink-600',
-                  'from-yellow-400 to-yellow-600',
-                  'from-red-400 to-red-600',
-                ];
-                const colorClass = member.colorClass || (isCurrentUser ? 'from-blue-400 to-blue-600' : colors[index % colors.length]);
-
-                return (
-                  <div key={`${conversation.id}-${member.id}`} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition">
-                    <div className={`w-10 h-10 bg-gradient-to-br ${colorClass} rounded-full flex items-center justify-center text-white font-semibold`}>
-                      {member.username?.charAt(0).toUpperCase() || 'U'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-800 truncate">
-                        {member.username || 'Unknown'} {isCurrentUser && <span className="text-xs text-gray-500">(You)</span>}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {member.email || ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {!isCurrentUser && currentUserIsAdmin && isGroup && (
-                        <button
-                          onClick={async () => {
-                            const memberId = member.user_id ?? member.id;
-                            if (!memberId || isNaN(Number(memberId))) {
-                              console.error('Invalid member id');
-                              return;
-                            }
-                            setMemberActionLoading(true);
-                            try {
-                              await conversationsAPI.removeMember(conversation.id, Number(memberId));
-                              setMembers((prev) => prev.filter((m: any) => (m.user_id ?? m.id) !== memberId));
-                            } catch (err) {
-                              console.error('Failed to remove member', err);
-                              alert('Cannot remove member: ' + ((err as any)?.response?.data?.message || 'Not found'));
-                            } finally {
-                              setMemberActionLoading(false);
+                  <div className="space-y-1">
+                    {members.map((member: any, index: number) => {
+                      const isAdmin = member.is_admin;
+                      const memberId = member.user_id ?? member.id;
+                      const isSelf = memberId === user?.id;
+                      const memberAvatarUrl = getAvatarUrl(member.avatar);
+                      return (
+                        <div
+                          key={member.id || memberId}
+                          className={`tg-list-item ${isSelf ? 'tg-list-item-active' : ''}`}
+                          style={{ animationDelay: `${index * 30}ms` }}
+                          onClick={() => {
+                            if (isSelf) {
+                              console.log('Open own profile');
+                            } else {
+                              console.log('Open profile of', member.username);
                             }
                           }}
-                          className="text-xs text-red-500 hover:text-red-600"
-                          disabled={memberActionLoading}
                         >
-                          Kick
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Additional Info */}
-          <div className="p-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Details</h4>
-            <div className="space-y-3">
-              <div className="flex items-start space-x-3">
-                <svg className="w-5 h-5 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <div>
-                  <p className="text-xs text-gray-500">Created</p>
-                  <p className="text-sm font-medium text-gray-800">
-                    {new Date(conversation.created_at).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
+                          <div className="tg-avatar tg-avatar-md overflow-hidden">
+                            {memberAvatarUrl ? (
+                              <img src={memberAvatarUrl} alt={member.username} className="w-full h-full object-cover" />
+                            ) : (
+                              member.username?.charAt(0).toUpperCase() || 'U'
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-tg-text truncate">{member.username}</p>
+                            <p className="text-xs text-tg-muted truncate">{member.email}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isAdmin && (
+                              <span className="tg-chip tg-chip-accent text-[10px] py-0.5 px-2">
+                                Admin
+                              </span>
+                            )}
+                            {currentUserIsAdmin && !isSelf && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveMember(memberId);
+                                }}
+                                className="tg-btn-danger tg-btn-sm py-1 px-2 text-xs"
+                                disabled={removingMemberId === memberId}
+                                title="Remove member"
+                              >
+                                {removingMemberId === memberId ? 'Removing…' : 'Remove'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
                     })}
-                  </p>
+                  </div>
+
+                  {/* Actions */}
+                  {currentUserIsAdmin && (
+                    <div className="mt-6">
+                      <button
+                        onClick={() => setShowAddModal(true)}
+                        className="tg-btn-primary w-full"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                        </svg>
+                        Add Members
+                      </button>
+                    </div>
+                  )}
+                  {!currentUserIsAdmin && (
+                    <div className="mt-6">
+                      <button
+                        onClick={handleLeaveGroup}
+                        className="tg-btn-danger w-full"
+                        disabled={removingMemberId === user?.id}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        {removingMemberId === user?.id ? 'Leaving…' : 'Leave group'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              {conversation.last_message_at && (
-                <div className="flex items-start space-x-3">
-                  <svg className="w-5 h-5 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div>
-                    <p className="text-xs text-gray-500">Last Activity</p>
-                    <p className="text-sm font-medium text-gray-800">
-                      {new Date(conversation.last_message_at).toLocaleDateString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
+            </aside>
+          )}
+        </div>
+      </section>
+
+      {/* Add Members Modal */}
+      {showAddModal && (
+        <div className="tg-modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div
+            className="tg-modal max-w-md animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="tg-modal-header">
+              <h3 className="font-semibold text-tg-text">Add Members</h3>
+              <button onClick={() => setShowAddModal(false)} className="tg-icon-btn">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="tg-modal-body">
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-tg-border bg-tg-panel2/30">
+                {availableUsers
+                  .filter(u => !members.some((m: any) => (m.user_id ?? m.id) === u.id))
+                  .map((u, index) => {
+                    const isSelected = addUserIds.includes(u.id);
+                    return (
+                      <div
+                        key={u.id}
+                        className={`tg-list-item mx-1 my-0.5 ${isSelected ? 'tg-list-item-active' : ''}`}
+                        style={{ animationDelay: `${index * 30}ms` }}
+                        onClick={() => {
+                          setAddUserIds((prev) =>
+                            prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                          );
+                        }}
+                      >
+                        <div className={`tg-avatar tg-avatar-md ${isSelected ? 'ring-2 ring-tg-accent/50' : ''}`}>
+                          {u.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate ${isSelected ? 'text-tg-accent' : 'text-tg-text'}`}>{u.username}</p>
+                          <p className="text-xs text-tg-muted truncate">{u.email}</p>
+                        </div>
+                        <div className="flex-shrink-0">
+                          {isSelected ? (
+                            <div className="w-6 h-6 bg-tg-accent rounded-full flex items-center justify-center animate-scale-in">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <div className="w-6 h-6 border-2 border-tg-border rounded-full" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                {availableUsers.filter(u => !members.some((m: any) => (m.user_id ?? m.id) === u.id)).length === 0 && (
+                  <div className="p-6 text-center">
+                    <p className="text-sm text-tg-muted">No users available to add.</p>
                   </div>
+                )}
+              </div>
+              {addUserIds.length > 0 && (
+                <div className="mt-3 animate-fade-in">
+                  <span className="tg-chip tg-chip-accent">
+                    {addUserIds.length} user{addUserIds.length > 1 ? 's' : ''} selected
+                  </span>
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">Add members</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
-            </div>
-            <div className="max-h-64 overflow-y-auto border rounded">
-              {availableUsers
-                .filter(u => !members.some((m: any) => (m.user_id ?? m.id) === u.id))
-                .map(u => (
-                  <label key={u.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{u.username}</p>
-                      <p className="text-xs text-gray-500">{u.email}</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={addUserIds.includes(u.id)}
-                      onChange={(e) => {
-                        setAddUserIds((prev) =>
-                          e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id)
-                        );
-                      }}
-                    />
-                  </label>
-                ))}
-              {availableUsers.filter(u => !members.some((m: any) => (m.user_id ?? m.id) === u.id)).length === 0 && (
-                <p className="text-sm text-gray-500 p-3">No users available to add.</p>
-              )}
-            </div>
-            <div className="flex items-center justify-end space-x-2">
+            <div className="tg-modal-footer">
               <button
                 onClick={() => {
                   setAddUserIds([]);
                   setShowAddModal(false);
                 }}
-                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+                className="tg-btn-secondary tg-btn-sm"
               >
                 Cancel
               </button>
@@ -747,31 +826,56 @@ const ChatArea: React.FC<ChatAreaProps> = ({ conversation, onMessageSent }) => {
                     setMemberActionLoading(false);
                   }
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                disabled={memberActionLoading}
+                className="tg-btn-primary tg-btn-sm min-w-[100px]"
+                disabled={memberActionLoading || addUserIds.length === 0}
               >
-                Add selected
+                {memberActionLoading ? (
+                  <>
+                    <span className="tg-spinner w-4 h-4" />
+                    <span>Adding...</span>
+                  </>
+                ) : (
+                  'Add Selected'
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Image Preview Modal */}
       {imagePreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={() => setImagePreview(null)}>
-          <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="tg-modal-overlay"
+          onClick={() => setImagePreview(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
-              className="absolute top-2 right-2 bg-white rounded-full p-2 shadow hover:bg-gray-100"
+              className="absolute -top-3 -right-3 w-10 h-10 bg-tg-panel border border-tg-border rounded-full flex items-center justify-center text-tg-text hover:bg-tg-panel2 shadow-tg transition-colors z-10"
               onClick={() => setImagePreview(null)}
             >
-              ✕
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
-            <img src={imagePreview.url} alt={imagePreview.name} className="max-h-[85vh] max-w-full rounded" />
-            <div className="text-center text-white mt-2 truncate px-4">{imagePreview.name}</div>
+            <img
+              src={imagePreview.url}
+              alt={imagePreview.name}
+              className="max-h-[85vh] max-w-full rounded-2xl shadow-tg-lg"
+            />
+            {imagePreview.name && (
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 rounded-b-2xl">
+                <p className="text-center text-white text-sm truncate">{imagePreview.name}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

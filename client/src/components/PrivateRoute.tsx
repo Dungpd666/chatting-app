@@ -11,8 +11,11 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-tg-bg">
+        <div className="flex flex-col items-center gap-4">
+          <div className="tg-spinner w-8 h-8" />
+          <p className="text-tg-muted text-sm">Loading...</p>
+        </div>
       </div>
     );
   }
